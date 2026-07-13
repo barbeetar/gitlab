@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Troubleshooting Vault - GitLab Pages</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260712-5">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Markdown Knowledge Base</p>
+        <h1>Troubleshooting Vault</h1>
+        <p class="hero-text">
+          GitLab Pages 版本：建立文件、預覽 Markdown、查詢既有紀錄都放在同一個介面。
+        </p>
+      </div>
+      <div class="hero-card">
+        <p>目前模式</p>
+        <strong>GitLab Pages + token workflow</strong>
+        <span>網站可讀取 entries/search-index.json；寫入 repo 時需暫時貼上 GitLab token。</span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel-search">
+        <div class="panel-heading panel-heading-row">
+          <div>
+            <p class="eyebrow">Search</p>
+            <h2>查詢</h2>
+          </div>
+          <button type="button" id="toggle-search-panel" class="ghost panel-toggle" aria-expanded="true">收合 ▲</button>
+        </div>
+
+        <div id="search-panel-body">
+          <form id="search-form" class="search-form">
+            <label>
+              關鍵字
+              <input type="search" name="keyword" placeholder="搜尋標題、單位、症狀、原因、解法">
+            </label>
+            <label>
+              提出單位
+              <input type="text" name="unit" id="unit-filter" list="unit-options" placeholder="可手動輸入或選擇既有單位">
+            </label>
+            <label>
+              開始日期
+              <input type="date" name="from">
+            </label>
+            <label>
+              結束日期
+              <input type="date" name="to">
+            </label>
+          </form>
+
+          <div class="search-meta">
+            <span id="entry-count">尚未查詢</span>
+            <button type="button" id="query-entries" class="primary">查詢</button>
+            <button type="button" id="clear-search" class="ghost">清除條件</button>
+            <label class="page-size-control">
+              每頁
+              <select id="page-size">
+                <option value="5">5 筆</option>
+                <option value="10" selected>10 筆</option>
+                <option value="20">20 筆</option>
+                <option value="50">50 筆</option>
+              </select>
+            </label>
+            <label class="page-size-control">
+              排序
+              <select id="sort-results">
+                <option value="date-desc" selected>日期新到舊</option>
+                <option value="date-asc">日期舊到新</option>
+                <option value="title-asc">標題 A 到 Z</option>
+                <option value="title-desc">標題 Z 到 A</option>
+                <option value="unit-asc">提出單位 A 到 Z</option>
+                <option value="unit-desc">提出單位 Z 到 A</option>
+              </select>
+            </label>
+            <button type="button" id="reload-entries" class="ghost" disabled>重新讀取資料</button>
+          </div>
+          <div id="loading-status" class="loading-status hidden">
+            <div class="loading-bar"><span id="loading-bar-fill"></span></div>
+            <span id="loading-message">載入中...</span>
+          </div>
+
+          <div id="search-results" class="results"></div>
+          <div class="pagination" id="pagination">
+            <button type="button" id="prev-page" class="ghost">上一頁</button>
+            <span id="page-status">第 1 / 1 頁</span>
+            <button type="button" id="next-page" class="ghost">下一頁</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel panel-form">
+        <div class="panel-heading">
+          <p class="eyebrow">Create</p>
+          <h2>建立文件 Markdown</h2>
+        </div>
+
+        <form id="entry-form" class="entry-form">
+          <label>
+            <span class="field-label">日期 <span class="field-note required">（必填）</span></span>
+            <input type="date" name="date" required>
+          </label>
+          <label>
+            <span class="field-label">提出單位 <span class="field-note required">（必填）</span></span>
+            <input type="text" name="unit" list="unit-options" placeholder="可手動輸入或選擇既有單位" required>
+          </label>
+          <datalist id="unit-options"></datalist>
+          <label>
+            <span class="field-label">問題標題 <span class="field-note required">（必填）</span></span>
+            <input type="text" name="title" placeholder="例如：ERP 匯出報表失敗" required>
+          </label>
+          <label>
+            <span class="field-label">問題現象畫面連結 <span class="field-note optional">（選填）</span></span>
+            <input type="url" name="screenshot" placeholder="例如：https://... 或 docs/image.png">
+          </label>
+          <label>
+            <span class="field-label">問題現象畫面截圖 <span class="field-note optional">（選填）</span></span>
+            <input type="file" id="screenshot-file" accept="image/*">
+            <input type="hidden" name="screenshotImage">
+          </label>
+          <div id="screenshot-paste-zone" class="paste-zone" tabindex="0" role="textbox" contenteditable="true" aria-label="貼上問題現象截圖">
+            或點這裡後直接貼上截圖（Ctrl + V）
+          </div>
+          <label>
+            <span class="field-label">關鍵字 <span class="field-note optional">（選填）</span></span>
+            <input type="text" name="tags" placeholder="例如：ERP, 報表, 權限">
+          </label>
+          <div class="editor-toolbar" aria-label="Markdown 編輯工具">
+            <span>Markdown 編輯工具</span>
+            <button type="button" class="ghost" data-editor-command="bold">粗體</button>
+            <button type="button" class="ghost" data-editor-command="list">項目符號</button>
+            <button type="button" class="ghost" data-editor-command="table">表格</button>
+            <button type="button" class="ghost" data-editor-command="image-upload">上傳圖片</button>
+            <input type="file" id="editor-image-file" accept="image/*" multiple>
+          </div>
+          <div id="editor-upload-status" class="editor-status">可以按「上傳圖片」，也可以直接在下方文字欄貼上圖片。圖片會先插入 Markdown，按「寫入 Repo」時才會上傳到 repo 的 assets/。</div>
+          <label>
+            <span class="field-label">問題現象 <span class="field-note required">（必填）</span></span>
+            <textarea name="symptom" rows="5" placeholder="描述使用者看到的畫面、錯誤訊息、重現條件" required></textarea>
+          </label>
+          <label>
+            <span class="field-label">判斷問題原因 <span class="field-note required">（必填）</span></span>
+            <textarea name="cause" rows="5" placeholder="記錄分析過程與判斷結果" required></textarea>
+          </label>
+          <label>
+            <span class="field-label">解決方式 <span class="field-note required">（必填）</span></span>
+            <textarea name="solution" rows="6" placeholder="記錄修復步驟、後續追蹤事項" required></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="primary">產生 Markdown</button>
+            <button type="button" id="copy-markdown" class="secondary">複製內容</button>
+            <button type="button" id="download-markdown" class="secondary">下載檔案</button>
+            <button type="button" id="save-to-repo" class="secondary">寫入 GitLab Repo</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel panel-preview">
+        <div class="panel-heading">
+          <p class="eyebrow">Preview</p>
+          <h2 id="preview-title">文件預覽</h2>
+        </div>
+        <div id="generated-filename" class="filename">尚未產生檔案</div>
+        <article id="markdown-preview" class="markdown-body markdown-preview">
+          <h1>尚未產生文件</h1>
+          <p>查詢文件或建立新文件後，這裡會顯示目前正在查看的內容。</p>
+        </article>
+        <details class="raw-markdown">
+          <summary>查看原始 Markdown</summary>
+          <pre id="markdown-output" class="markdown-output">填完左側表單後，這裡會產生 Markdown 內容。</pre>
+        </details>
+      </section>
+
+      <section class="panel panel-api">
+        <div class="panel-heading">
+          <p class="eyebrow">GitLab</p>
+          <h2>GitLab API 設定</h2>
+        </div>
+        <p class="import-text">
+          Token 只用於目前頁面，不會長期儲存；重新整理後需要重新貼上。請只在可信任裝置使用。
+        </p>
+        <form id="api-form" class="entry-form api-form">
+          <label>
+            GitLab Project ID
+            <input type="text" name="gitlabProjectId" placeholder="例如：123456 或 group/project">
+          </label>
+          <label>
+            GitLab Token
+            <input type="password" name="gitlabToken" placeholder="需要寫入 repo 權限">
+          </label>
+          <label>
+            Markdown 目錄
+            <input type="text" name="entriesPath" value="entries">
+          </label>
+          <label>
+            Branch
+            <input type="text" name="branch" placeholder="例如：main">
+          </label>
+          <label>
+            GitLab Base URL
+            <input type="url" name="gitlabBaseUrl" value="https://gitlab.com">
+          </label>
+          <div class="form-actions">
+            <button type="button" id="save-api-config" class="ghost">儲存 GitLab 設定</button>
+          </div>
+        </form>
+        <div id="repo-status" class="repo-status">GitLab Pages 模式：查詢使用本機 entries/search-index.json。</div>
+        <div id="api-status" class="repo-status">尚未設定 GitLab 寫入。Token 不會長期儲存。</div>
+        <div id="api-progress" class="loading-status hidden">
+          <div class="loading-bar"><span id="api-progress-fill"></span></div>
+          <span id="api-progress-message">寫入中...</span>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="result-template">
+    <article class="result-card">
+      <div class="result-row-main">
+        <div class="result-content">
+          <h3 class="result-title"></h3>
+          <div class="result-meta"></div>
+          <p class="result-summary"></p>
+        </div>
+        <div class="result-actions result-row-actions">
+          <button type="button" class="result-toggle">展開文件</button>
+          <button type="button" class="result-open secondary">在預覽區開啟</button>
+          <a class="result-file" target="_blank" rel="noreferrer">查看 Markdown</a>
+        </div>
+      </div>
+      <pre class="result-detail hidden"></pre>
+    </article>
+  </template>
+
+  <script src="app.js?v=20260712-5"></script>
+</body>
+</html>

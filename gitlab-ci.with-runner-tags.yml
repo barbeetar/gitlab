@@ -1,0 +1,21 @@
+# GitLab Pages CI example for company runners that require tags.
+# To use this file, replace "your-company-runner-tag" with the runner tag used by your company,
+# then rename/copy this file to .gitlab-ci.yml.
+
+pages:
+  image: ruby:3.3
+  stage: deploy
+  tags:
+    - your-company-runner-tag
+  script:
+    - ruby scripts/build-search-index.rb
+    - mkdir -p public
+    - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
+    - cp -r entries public/
+    - if [ -d assets ]; then cp -r assets public/; fi
+  pages: true
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
