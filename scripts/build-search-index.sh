@@ -37,9 +37,29 @@ extract_meta() {
 extract_section() {
   heading="$1"
   awk -v heading="$heading" '
-    $0 == "## " heading { capture = 1; next }
-    capture && /^## / { exit }
-    capture { print }
+    function flush() {
+      sub(/^[ \t\r\n]+/, "", value)
+      sub(/[ \t\r\n]+$/, "", value)
+      print value
+    }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+    }
+    line ~ "^[ \t]*##[ \t]+" heading "[ \t]*$" { capture = 1; value = ""; next }
+    capture && line ~ "^[ \t]*##[ \t]+" { flush(); capture = 0; exit }
+    capture {
+      if (value != "") {
+        value = value "\n" line
+      } else {
+        value = line
+      }
+    }
+    END {
+      if (capture) {
+        flush()
+      }
+    }
   '
 }
 
