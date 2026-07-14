@@ -19,14 +19,23 @@ escape_json() {
 extract_meta() {
   key="$1"
   awk -v key="$key" '
-    BEGIN { in_meta = 0 }
-    NR == 1 && $0 == "---" { in_meta = 1; next }
-    in_meta && $0 == "---" { exit }
+    BEGIN { in_meta = 0; seen_content = 0 }
+    {
+      line = $0
+      sub(/^\xef\xbb\xbf/, "", line)
+      sub(/\r$/, "", line)
+    }
+    !seen_content && line ~ /^[ \t]*$/ { next }
+    !seen_content && line ~ /^[ \t]*---[ \t]*$/ { in_meta = 1; seen_content = 1; next }
+    !seen_content { exit }
+    in_meta && line ~ /^[ \t]*---[ \t]*$/ { exit }
     in_meta {
-      prefix = key ":"
-      if (index($0, prefix) == 1) {
-        value = substr($0, length(prefix) + 1)
+      pattern = "^[ \t]*" key "[ \t]*:"
+      if (line ~ pattern) {
+        value = line
+        sub(pattern, "", value)
         sub(/^[ \t]+/, "", value)
+        sub(/[ \t]+$/, "", value)
         print value
         exit
       }
