@@ -709,7 +709,8 @@ async function saveMarkdownToRepo() {
   const branch = config.branch || "main";
   const entriesPath = config.entriesPath || "entries";
   const apiBase = `${config.gitlabBaseUrl || "https://gitlab.com"}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}`;
-  setApiStatus("正在觸發 GitLab pipeline，由 CI/CD Variables 內的 token 寫入 repo...");
+  const imageNote = pendingImages.length ? `，包含 ${pendingImages.length} 張待上傳圖片` : "";
+  setApiStatus(`正在觸發 GitLab pipeline，由 CI/CD Variables 內的 token 寫入 repo${imageNote}...`);
   setApiProgress("正在準備 pipeline payload...", 25);
 
   try {
@@ -797,9 +798,10 @@ function toBase64Unicode(value) {
 }
 
 function buildImagesTsv(images) {
-  return images
+  const rows = images
     .map((image) => `${image.path}\t${image.base64}`)
     .join("\n");
+  return rows ? `${rows}\n` : "";
 }
 
 function sleep(ms) {
