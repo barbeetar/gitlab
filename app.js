@@ -552,10 +552,20 @@ function getApiConfig() {
   return {
     gitlabProjectId: String(data.gitlabProjectId || "").trim(),
     gitlabToken: String(data.gitlabToken || "").trim(),
-    gitlabBaseUrl: String(data.gitlabBaseUrl || "https://gitlab.com").trim().replace(/\/$/, ""),
+    gitlabBaseUrl: normalizeGitLabBaseUrl(data.gitlabBaseUrl || "https://gitlab.com"),
     entriesPath: normalizeRelativePath(data.entriesPath || "entries"),
     branch: String(data.branch || "").trim()
   };
+}
+
+function normalizeGitLabBaseUrl(value) {
+  const raw = String(value || "https://gitlab.com").trim();
+  try {
+    const url = new URL(raw);
+    return url.origin;
+  } catch (_error) {
+    return raw.replace(/\/$/, "");
+  }
 }
 
 function saveApiConfig() {
@@ -681,7 +691,7 @@ async function saveMarkdownToRepo() {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(errorText || `GitLab pipeline 觸發失敗 ${response.status}`);
+      throw new Error(buildGitLabTriggerError(response.status, errorText, config));
     }
 
     const result = await response.json();
@@ -704,6 +714,32 @@ async function saveMarkdownToRepo() {
     setApiProgress("寫入失敗，請查看錯誤訊息。", 100);
     console.error(error);
   }
+}
+
+function buildGitLabTriggerError(status, errorText, config) {
+  const cleanText = stripHtml(errorText).trim();
+  if (status === 404) {
+    return [
+      "GitLab pipeline 觸發失敗 404：找不到 project 或 trigger endpoint。",
+      `目前 API Base：${config.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}`,
+      "請確認 GitLab Base URL 只填 GitLab 主站根網址，例如 https://gitlab.com，不要填 Pages 網址或 project URL。",
+      "請確認 GitLab Project ID 正確，建議使用數字 Project ID。",
+      "請確認 Pipeline Trigger Token 是在同一個 project 建立。",
+      "請確認 Branch 填的是實際存在的分支。"
+    ].join(" ");
+  }
+  if (status === 403 || status === 401) {
+    return "GitLab pipeline 觸發失敗：Trigger Token 無效、過期，或沒有權限觸發這個 project。";
+  }
+  return cleanText || `GitLab pipeline 觸發失敗 ${status}`;
+}
+
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 function toBase64Unicode(value) {
