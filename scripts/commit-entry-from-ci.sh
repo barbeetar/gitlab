@@ -91,14 +91,31 @@ done
 
 printf "%s" "$markdown_base64" > /tmp/entry-markdown.b64
 decode_base64_file /tmp/entry-markdown.b64 /tmp/entry.md
+mkdir -p "$entries_path"
+cp /tmp/entry.md "$entries_path/$target_filename"
+sh scripts/build-search-index.sh
+
 markdown_encoded=$(base64 < /tmp/entry.md | tr -d '\n')
 entry_path_json=$(printf "%s/%s" "$entries_path" "$target_filename" | json_escape)
+search_index_path="$entries_path/search-index.json"
+search_index_path_json=$(printf "%s" "$search_index_path" | json_escape)
+search_index_encoded=$(base64 < "$search_index_path" | tr -d '\n')
+search_index_action="create"
+if file_exists "$search_index_path"; then
+  search_index_action="update"
+fi
 
 cat > /tmp/actions.json <<EOF
     {
       "action": "create",
       "file_path": "$entry_path_json",
       "content": "$markdown_encoded",
+      "encoding": "base64"
+    },
+    {
+      "action": "$search_index_action",
+      "file_path": "$search_index_path_json",
+      "content": "$search_index_encoded",
       "encoding": "base64"
     }
 EOF
