@@ -48,8 +48,6 @@ project_id=$(require_env "CI_PROJECT_ID")
 write_token=$(require_env "GITLAB_WRITE_TOKEN")
 target_branch="${CI_COMMIT_REF_NAME:-${CI_DEFAULT_BRANCH:-main}}"
 entries_path="${ENTRIES_PATH:-entries}"
-search_index_path="$entries_path/search-index.json"
-
 entries_path=$(printf "%s" "$entries_path" | sed 's#\\#/#g; s#^\./##; s#/*$##')
 search_index_path="$entries_path/search-index.json"
 project_encoded=$(printf "%s" "$project_id" | urlencode)
