@@ -658,17 +658,13 @@ async function saveMarkdownToRepo() {
   setApiProgress("正在準備 pipeline payload...", 25);
 
   try {
-    const imagesPayload = pendingImages.map((image) => ({
-      path: image.path,
-      base64: image.base64
-    }));
     const body = new URLSearchParams({
       token: config.gitlabToken,
       ref: branch,
       "variables[TRIGGER_ACTION]": "create_entry",
       "variables[ENTRY_FILENAME]": generatedState.filename,
       "variables[ENTRY_MARKDOWN_BASE64]": toBase64Unicode(generatedState.markdown),
-      "variables[ENTRY_IMAGES_JSON_BASE64]": toBase64Unicode(JSON.stringify(imagesPayload)),
+      "variables[ENTRY_IMAGES_TSV_BASE64]": toBase64Unicode(buildImagesTsv(pendingImages)),
       "variables[ENTRIES_PATH]": entriesPath,
       "variables[TARGET_BRANCH]": branch
     });
@@ -712,6 +708,12 @@ async function saveMarkdownToRepo() {
 
 function toBase64Unicode(value) {
   return btoa(unescape(encodeURIComponent(value)));
+}
+
+function buildImagesTsv(images) {
+  return images
+    .map((image) => `${image.path}\t${image.base64}`)
+    .join("\n");
 }
 
 function sleep(ms) {

@@ -23,8 +23,8 @@
 |-- GITLAB_DEPLOY.md
 |-- .gitlab-ci.yml
 |-- scripts
-|   |-- build-search-index.js
-|   `-- commit-entry-from-ci.js
+|   |-- build-search-index.sh
+|   `-- commit-entry-from-ci.sh
 `-- entries
     |-- example.md
     |-- index.json
@@ -38,14 +38,22 @@
 1. 建立一個 GitLab project。
 2. 把這個資料夾內的檔案上傳到 repo 根目錄。
 3. 確認 repo 根目錄有 `.gitlab-ci.yml`。
-4. 確認 repo 內有 `scripts/build-search-index.js` 和 `scripts/commit-entry-from-ci.js`。
+4. 確認 repo 內有 `scripts/build-search-index.sh` 和 `scripts/commit-entry-from-ci.sh`。
 5. 確認 repo 內有 `entries/` 資料夾。
 6. 到 `Build > Pipelines` 查看 pipeline 是否成功。
 7. 到 `Deploy > Pages` 查看 GitLab Pages 網址。
 
 如果 pipeline 成功，GitLab Pages 會發布 `public/` 內的網站檔案，包含 `index.html`、`style.css`、`app.js`、`entries/` 和 `assets/`。
 
-目前 `.gitlab-ci.yml` 不指定外部 Docker image，避免公司 runner 無法從 Docker Hub 拉 `node:20-alpine`。請確認公司 runner 預設環境有 Node.js；如果沒有，請改用公司允許的內部 Node image。
+目前 `.gitlab-ci.yml` 使用 shell 腳本，不需要 Ruby、Node.js 或 Python，也不會拉 Docker Hub image。
+
+CI 需要 runner 環境有這些常見指令：
+
+```text
+sh, awk, sed, basename, curl, base64
+```
+
+建立資料時貼上的圖片會和 Markdown 一起由 CI commit 到 repo。
 
 ## 建立 GitLab 寫入 Token
 
@@ -139,7 +147,7 @@ https://gitlab.example.com
 2. 按 `下載檔案` 或 `複製內容`。
 3. 到 GitLab repo 的 `entries/` 新增 `.md` 檔案。
 4. Commit 到部署分支。
-5. GitLab CI 會執行 `scripts/build-search-index.js`。
+5. GitLab CI 會執行 `scripts/build-search-index.sh`。
 6. `entries/search-index.json` 會在 Pages 部署產物中被重建。
 7. Pipeline 成功、Pages 更新後，網站就能查到資料。
 
@@ -175,8 +183,8 @@ screenshotImage: assets/erp-export-error.png
 
 代表 Pages 部署產物裡沒有產生搜尋索引。請確認：
 
-- `.gitlab-ci.yml` 有執行 `node scripts/build-search-index.js`
-- `scripts/build-search-index.js` 有上傳到 repo
+- `.gitlab-ci.yml` 有執行 `sh scripts/build-search-index.sh`
+- `scripts/build-search-index.sh` 有上傳到 repo
 - `entries/` 內至少有 Markdown 檔案
 - pipeline 是成功狀態
 
@@ -194,7 +202,7 @@ screenshotImage: assets/erp-export-error.png
 
 ### 圖片貼上後會存在哪裡
 
-建立文件時貼上的圖片會先暫存在瀏覽器頁面。按 `寫入 GitLab Repo` 後，圖片會跟 Markdown 一起 commit 到 repo 的 `assets/` 資料夾。
+建立文件時貼上的圖片會先暫存在瀏覽器頁面。按 `寫入 GitLab Repo` 後，圖片會跟 Markdown 一起由 CI commit 到 repo 的 `assets/` 資料夾。
 
 ## 更多部署細節
 

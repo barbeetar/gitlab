@@ -15,8 +15,8 @@
 |-- GITLAB_DEPLOY.md
 |-- .gitlab-ci.yml
 |-- scripts
-|   |-- build-search-index.js
-|   `-- commit-entry-from-ci.js
+|   |-- build-search-index.sh
+|   `-- commit-entry-from-ci.sh
 `-- entries
     |-- example.md
     `-- search-index.json
@@ -31,21 +31,15 @@
 
 ## CI 執行環境
 
-目前 `.gitlab-ci.yml` 不指定 Docker image，避免公司 runner 因為無法連到 Docker Hub 而出現 `ErrImagePull` / `ImagePullBackOff`。
+目前 `.gitlab-ci.yml` 使用 shell 腳本，不指定 Docker image，不需要 Ruby、Node.js 或 Python。
 
-這代表 GitLab runner 的預設執行環境需要有 Node.js。CI 會先執行：
+CI 需要 runner 環境有：
 
 ```text
-node --version
+sh, awk, sed, basename, curl, base64
 ```
 
-如果這一步失敗，代表 runner 預設環境沒有 Node.js。
-
-若公司有指定可用的內部 Node image，請在 `.gitlab-ci.yml` 的 `commit_entry` 和 `pages` job 加上公司允許的 image，例如：
-
-```yaml
-image: your-company-node-image:20
-```
+如果 runner 環境沒有 `curl`、`base64`、`awk` 或 `sed`，請改用公司允許的基礎 image，或請 runner 管理員提供內建這些工具的 runner。
 
 如果公司 runner 需要 tag，請參考：
 
@@ -116,7 +110,7 @@ GitLab Base URL: https://gitlab.com
 -> 觸發 GitLab pipeline
 -> commit_entry job 使用 GITLAB_WRITE_TOKEN commit 到 repo
 -> push 觸發 pages job
--> build-search-index.js 重新產生 entries/search-index.json
+-> build-search-index.sh 重新產生 entries/search-index.json
 -> GitLab Pages 更新
 -> 網頁偵測 search-index.json 出現新檔名
 ```

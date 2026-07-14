@@ -5,16 +5,14 @@ stages:
 commit_entry:
   stage: write
   script:
-    - node --version
-    - node scripts/commit-entry-from-ci.js
+    - sh scripts/commit-entry-from-ci.sh
   rules:
     - if: $TRIGGER_ACTION == "create_entry"
 
 pages:
   stage: deploy
   script:
-    - node --version
-    - node scripts/build-search-index.js
+    - sh scripts/build-search-index.sh
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
     - cp -r entries public/
