@@ -314,6 +314,51 @@ function buildEntryFromLocalSearchIndexItem(item) {
   };
 }
 
+function isIncompleteIndexedEntry(entry) {
+  return !entry.date || !entry.unit || !entry.symptom || !entry.cause || !entry.solution;
+}
+
+async function hydrateIncompleteIndexedEntries(entries) {
+  const hydrated = [];
+  let completed = 0;
+  const incompleteCount = entries.filter(isIncompleteIndexedEntry).length;
+
+  for (const entry of entries) {
+    if (!isIncompleteIndexedEntry(entry) || !entry.path) {
+      hydrated.push(entry);
+      continue;
+    }
+
+    try {
+      completed += 1;
+      setLoadingStatus(`正在補齊不完整索引：${completed}/${incompleteCount}`, 45 + (completed / incompleteCount) * 35);
+      const response = await fetch(`${entry.path}?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) {
+        hydrated.push(entry);
+        continue;
+      }
+
+      const raw = await response.text();
+      const parsed = buildEntryFromMarkdown(raw, {
+        path: entry.path,
+        sourceName: entry.sourceName,
+        fallbackTitle: entry.title
+      });
+      hydrated.push({
+        ...entry,
+        ...parsed,
+        title: parsed.title || entry.title,
+        sourceName: entry.sourceName || parsed.sourceName
+      });
+    } catch (error) {
+      console.warn("Failed to hydrate incomplete indexed entry", entry.path, error);
+      hydrated.push(entry);
+    }
+  }
+
+  return hydrated;
+}
+
 function renderMarkdownArticle(entry) {
   const tagsHtml = entry.tags.length
     ? `<p><strong>Tags:</strong> ${entry.tags.map((tag) => `<code>${escapeHtml(tag)}</code>`).join(" ")}</p>`
@@ -719,14 +764,19 @@ async function saveMarkdownToRepo() {
 function buildGitLabTriggerError(status, errorText, config) {
   const cleanText = stripHtml(errorText).trim();
   if (status === 404) {
+    const pagesHostHint = /pages/i.test(config.gitlabBaseUrl)
+      ? "目前 GitLab Base URL 看起來是 GitLab Pages 主機；Pages 主機通常沒有 /api/v4，請改填 GitLab 專案管理介面的主機。"
+      : "";
     return [
-      "GitLab pipeline 觸發失敗 404：找不到 project 或 trigger endpoint。",
       `目前 API Base：${config.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}`,
-      "請確認 GitLab Base URL 只填 GitLab 主站根網址，例如 https://gitlab.com，不要填 Pages 網址或 project URL。",
+      "GitLab pipeline 觸發失敗 404：找不到 project 或 trigger endpoint。",
+      pagesHostHint,
+      "GitLab Base URL 必須填 GitLab 專案管理介面的根網址，不是 GitLab Pages 網址，也不是 project URL。",
+      "例如你平常進 GitLab repo 的網址如果是 https://gitlab.company.com/group/project，這裡只填 https://gitlab.company.com。",
       "請確認 GitLab Project ID 正確，建議使用數字 Project ID。",
       "請確認 Pipeline Trigger Token 是在同一個 project 建立。",
       "請確認 Branch 填的是實際存在的分支。"
-    ].join(" ");
+    ].filter(Boolean).join(" ");
   }
   if (status === 403 || status === 401) {
     return "GitLab pipeline 觸發失敗：Trigger Token 無效、過期，或沒有權限觸發這個 project。";
@@ -1100,7 +1150,9 @@ async function loadEntries() {
 
     const localIndex = await searchIndexResponse.json();
     const items = Array.isArray(localIndex) ? localIndex : localIndex.entries || [];
-    allEntries = sortEntries(items.map(buildEntryFromLocalSearchIndexItem));
+    const indexedEntries = items.map(buildEntryFromLocalSearchIndexItem);
+    const hydratedEntries = await hydrateIncompleteIndexedEntries(indexedEntries);
+    allEntries = sortEntries(hydratedEntries);
     hasLoadedEntries = true;
     updateUnitOptions();
     filterEntries();
