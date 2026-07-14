@@ -4,6 +4,7 @@
 
 stages:
   - write
+  - index
   - deploy
 
 commit_entry:
@@ -14,6 +15,15 @@ commit_entry:
     - sh scripts/commit-entry-from-ci.sh
   rules:
     - if: $TRIGGER_ACTION == "create_entry"
+
+update_search_index:
+  stage: index
+  tags:
+    - your-company-runner-tag
+  script:
+    - sh scripts/update-search-index-from-ci.sh
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
 
 pages:
   stage: deploy
