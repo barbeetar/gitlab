@@ -9,8 +9,8 @@
 - 支援粗體、表格、清單、貼上圖片與截圖
 - 查詢既有 Markdown 紀錄，並可用分頁控制每頁筆數
 - 查詢結果可依日期、標題、提出單位排序
-- 使用 GitLab token 直接把新文件與圖片 commit 到 GitLab repo
-- 寫入後會等待該 commit 的 GitLab pipeline 完成
+- 使用 Pipeline Trigger Token 觸發 GitLab CI
+- 真正可寫 repo 的 token 放在 GitLab CI/CD Variables
 
 ## 專案結構
 
@@ -23,7 +23,8 @@
 |-- GITLAB_DEPLOY.md
 |-- .gitlab-ci.yml
 |-- scripts
-|   `-- build-search-index.rb
+|   |-- build-search-index.rb
+|   `-- commit-entry-from-ci.rb
 `-- entries
     |-- example.md
     |-- index.json
@@ -44,9 +45,9 @@
 
 如果 pipeline 成功，GitLab Pages 會發布 `public/` 內的網站檔案，包含 `index.html`、`style.css`、`app.js`、`entries/` 和 `assets/`。
 
-## 建立 GitLab Token
+## 建立 GitLab 寫入 Token
 
-建議使用 Project access token，不建議使用個人 Personal access token。
+建議使用 Project access token，不建議使用個人 Personal access token。這個 token 不要填在網頁上，請放在 GitLab CI/CD Variables。
 
 建議設定：
 
@@ -57,19 +58,34 @@ Scopes: api, read_repository, write_repository
 
 原因：
 
-- `api`：前端呼叫 GitLab Commits API 和 Pipelines API 需要。
-- `read_repository`：檢查檔案是否已存在時需要讀取 repo。
-- `write_repository`：寫入 Markdown 和圖片時需要。
+- `api`：CI job 呼叫 GitLab Commits API 需要。
+- `read_repository`：CI job 檢查檔案是否已存在時需要讀取 repo。
+- `write_repository`：CI job 寫入 Markdown 和圖片時需要。
 
-Token 只會存在目前瀏覽器頁面，不會存進 `localStorage`。重新整理或重新開啟頁面後，需要重新貼上 token。
+到 `Settings > CI/CD > Variables` 新增：
 
-## 網站上的 GitLab API 設定
+```text
+Key: GITLAB_WRITE_TOKEN
+Value: 你的 Project access token
+Masked: 建議開啟
+Protected: 如果你的部署分支是 protected branch 才開啟
+```
 
-在網站右側或下方的 `GitLab API 設定` 填：
+這個 token 只會在 GitLab runner 裡使用，不會出現在網站前端。
+
+## 建立 Pipeline Trigger Token
+
+到 `Settings > CI/CD > Pipeline trigger tokens` 建立 trigger token。
+
+這個 token 是給網頁觸發 pipeline 用的，不是 repo 寫入 token。它仍會出現在瀏覽器 Network request 裡，所以請只在可信任裝置使用，但風險比把 `api/write_repository` token 放在前端低。
+
+## 網站上的 GitLab Pipeline 設定
+
+在網站右側或下方的 `GitLab Pipeline 設定` 填：
 
 ```text
 GitLab Project ID: 建議填數字 Project ID
-GitLab Token: Project access token
+Pipeline Trigger Token: Pipeline trigger token
 Markdown 目錄: entries
 Branch: 你的 Pages 部署分支，通常是 main
 GitLab Base URL: https://gitlab.com
@@ -90,7 +106,7 @@ https://gitlab.example.com
 3. 如果有截圖，可以用檔案上傳，也可以點截圖貼上區後按 `Ctrl + V`。
 4. 內容會即時顯示在文件預覽。
 5. 確認內容後按 `寫入 GitLab Repo`。
-6. 等待寫入進度條顯示 GitLab pipeline 成功。
+6. 網站會觸發 GitLab pipeline，由 CI/CD Variables 內的 `GITLAB_WRITE_TOKEN` 寫入 repo。
 7. 如果查詢還看不到新資料，稍等 GitLab Pages 更新後按 `重新讀取資料`。
 
 ### 查詢資料
@@ -167,9 +183,11 @@ screenshotImage: assets/erp-export-error.png
 請確認：
 
 - `GitLab Project ID` 正確，建議使用數字 Project ID
-- token 沒有過期
-- token role 是 Maintainer
-- token scopes 包含 `api`、`read_repository`、`write_repository`
+- 網頁填的是 Pipeline Trigger Token，不是 Project access token
+- CI/CD Variables 有設定 `GITLAB_WRITE_TOKEN`
+- `GITLAB_WRITE_TOKEN` 沒有過期
+- `GITLAB_WRITE_TOKEN` role 是 Maintainer
+- `GITLAB_WRITE_TOKEN` scopes 包含 `api`、`read_repository`、`write_repository`
 - `Branch` 填的是實際要寫入與部署的分支
 
 ### 圖片貼上後會存在哪裡

@@ -21,8 +21,8 @@
       </div>
       <div class="hero-card">
         <p>目前模式</p>
-        <strong>GitLab Pages + token workflow</strong>
-        <span>網站可讀取 entries/search-index.json；寫入 repo 時需暫時貼上 GitLab token。</span>
+        <strong>GitLab Pages + CI/CD Variables workflow</strong>
+        <span>網站讀取 entries/search-index.json；寫入時觸發 pipeline，由 CI/CD Variables 內的 token commit。</span>
       </div>
     </header>
 
@@ -182,10 +182,10 @@
       <section class="panel panel-api">
         <div class="panel-heading">
           <p class="eyebrow">GitLab</p>
-          <h2>GitLab API 設定</h2>
+          <h2>GitLab Pipeline 設定</h2>
         </div>
         <p class="import-text">
-          Token 只用於目前頁面，不會長期儲存；重新整理後需要重新貼上。請只在可信任裝置使用。
+          這裡只填 Pipeline Trigger Token；真正可寫 repo 的 token 請放在 GitLab CI/CD Variables。
         </p>
         <form id="api-form" class="entry-form api-form">
           <label>
@@ -193,8 +193,8 @@
             <input type="text" name="gitlabProjectId" placeholder="例如：123456 或 group/project">
           </label>
           <label>
-            GitLab Token
-            <input type="password" name="gitlabToken" placeholder="需要寫入 repo 權限">
+            Pipeline Trigger Token
+            <input type="password" name="gitlabToken" placeholder="用於觸發 pipeline，不是 repo 寫入 token">
           </label>
           <label>
             Markdown 目錄
@@ -213,7 +213,7 @@
           </div>
         </form>
         <div id="repo-status" class="repo-status">GitLab Pages 模式：查詢使用本機 entries/search-index.json。</div>
-        <div id="api-status" class="repo-status">尚未設定 GitLab 寫入。Token 不會長期儲存。</div>
+        <div id="api-status" class="repo-status">尚未設定 GitLab pipeline 觸發。Trigger token 不會長期儲存。</div>
         <div id="api-progress" class="loading-status hidden">
           <div class="loading-bar"><span id="api-progress-fill"></span></div>
           <span id="api-progress-message">寫入中...</span>

@@ -3,7 +3,7 @@
 這份文件說明如何把 Troubleshooting Vault 部署到 GitLab Pages。
 
 這個資料夾是 GitLab Pages 專用版本。  
-靜態網站可以正常部署；寫入 repo 時需要在網頁暫時貼上 GitLab token。Token 不會長期儲存，重新整理後需要重新貼上。
+靜態網站可以正常部署；寫入 repo 時，網頁只負責觸發 GitLab pipeline，真正可寫 repo 的 token 放在 GitLab CI/CD Variables。
 
 ## 可以直接使用的功能
 
@@ -19,7 +19,7 @@
 - GitHub Actions polling
 - GitHub repo 自動偵測
 
-GitLab 版會直接從前端呼叫 GitLab Repository Commits API。
+GitLab 版會從前端觸發 pipeline，再由 CI job 呼叫 GitLab Repository Commits API。
 
 ## 建議 GitLab 專案結構
 
@@ -31,6 +31,9 @@ GitLab 版會直接從前端呼叫 GitLab Repository Commits API。
 |-- README.md
 |-- GITLAB_DEPLOY.md
 |-- .gitlab-ci.yml
+|-- scripts
+|   |-- build-search-index.rb
+|   `-- commit-entry-from-ci.rb
 `-- entries
     |-- example.md
     `-- search-index.json
@@ -67,6 +70,8 @@ pages:
 ```
 
 GitLab Pages 會把 `public/` 目錄發佈成網站。
+
+目前實際 `.gitlab-ci.yml` 另外包含 `commit_entry` job，用於網頁觸發 pipeline 後把 Markdown commit 回 repo。請以上傳的 `.gitlab-ci.yml` 為準。
 
 ## 建立索引腳本
 
@@ -155,20 +160,31 @@ https://<namespace>.gitlab.io/<project>/
 
 ## 寫入 GitLab Repo
 
-前端 `GitLab API 設定` 填：
+先到 `Settings > CI/CD > Variables` 新增：
+
+```text
+Key: GITLAB_WRITE_TOKEN
+Value: Project access token
+Scopes: api, read_repository, write_repository
+Role: Maintainer
+```
+
+再到 `Settings > CI/CD > Pipeline trigger tokens` 建立 trigger token。
+
+前端 `GitLab Pipeline 設定` 填：
 
 ```text
 GitLab Project ID: project id 或 group/project
-GitLab Token: 你的 GitLab token
+Pipeline Trigger Token: pipeline trigger token
 Markdown 目錄: entries
 Branch: main
 GitLab Base URL: https://gitlab.com
 ```
 
-Token 不會寫入 localStorage；重新整理或重新開啟頁面後需要重新貼上。  
-不要把 GitLab token 寫死在 `index.html` 或 `app.js`。
+Pipeline Trigger Token 不會寫入 localStorage；重新整理或重新開啟頁面後需要重新貼上。  
+不要把 `GITLAB_WRITE_TOKEN` 寫死在 `index.html` 或 `app.js`。
 
-按 `寫入 GitLab Repo` 後，網站會等待該 commit 觸發的 GitLab pipeline 完成，進度條會顯示 pipeline 狀態。Pipeline 成功後 Pages 仍可能需要短時間更新，若查不到最新資料，請稍等後按 `重新讀取資料`。
+按 `寫入 GitLab Repo` 後，網站會觸發 pipeline。Pipeline 會使用 CI/CD Variables 裡的 `GITLAB_WRITE_TOKEN` commit Markdown 和圖片。網站會等待 `entries/search-index.json` 出現新檔名，若查不到最新資料，請稍等後按 `重新讀取資料`。
 
 如果只是個人手動維護，可以先用這個流程：
 

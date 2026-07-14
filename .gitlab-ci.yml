@@ -1,3 +1,15 @@
+stages:
+  - write
+  - deploy
+
+commit_entry:
+  image: ruby:3.3
+  stage: write
+  script:
+    - ruby scripts/commit-entry-from-ci.rb
+  rules:
+    - if: $TRIGGER_ACTION == "create_entry"
+
 pages:
   image: ruby:3.3
   stage: deploy
@@ -12,4 +24,4 @@ pages:
     paths:
       - public
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"

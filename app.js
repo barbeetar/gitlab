@@ -567,8 +567,8 @@ function saveApiConfig() {
     branch: config.branch
   }));
   const tokenNote = config.gitlabToken
-    ? "目前頁面已有 GitLab Token，可直接寫入；重新開頁後需重新貼上。"
-    : "GitLab Token 欄位目前是空的，無法寫入 GitLab。";
+    ? "目前頁面已有 Pipeline Trigger Token，可觸發寫入 pipeline；重新開頁後需重新貼上。"
+    : "Pipeline Trigger Token 欄位目前是空的，無法觸發寫入 pipeline。";
   setApiStatus(`已儲存 Project ID、Markdown 目錄、Branch 與 Base URL。${tokenNote}`);
   allEntries = [];
   filteredEntries = [];
@@ -606,7 +606,7 @@ function restoreApiConfig() {
     if (branchField) {
       branchField.value = config.branch || "";
     }
-    setApiStatus("已載入 Project ID、Markdown 目錄、Branch 與 Base URL。GitLab Token 不會長期儲存。");
+    setApiStatus("已載入 Project ID、Markdown 目錄、Branch 與 Base URL。Pipeline Trigger Token 不會長期儲存。");
   } catch (error) {
     console.error(error);
   }
@@ -646,7 +646,7 @@ async function saveMarkdownToRepo() {
   }
 
   if (!config.gitlabToken) {
-    setApiStatus("請先填入 GitLab Token。");
+    setApiStatus("請先填入 Pipeline Trigger Token。");
     hideApiProgress();
     return;
   }
@@ -654,65 +654,54 @@ async function saveMarkdownToRepo() {
   const branch = config.branch || "main";
   const entriesPath = config.entriesPath || "entries";
   const apiBase = `${config.gitlabBaseUrl || "https://gitlab.com"}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}`;
-  setApiStatus("正在直接呼叫 GitLab API 寫入...");
-  setApiProgress("正在準備 commit actions...", 25);
+  setApiStatus("正在觸發 GitLab pipeline，由 CI/CD Variables 內的 token 寫入 repo...");
+  setApiProgress("正在準備 pipeline payload...", 25);
 
   try {
-    const targetFilename = await getAvailableGitLabFilename(apiBase, config.gitlabToken, branch, entriesPath, generatedState.filename);
-    const actions = [
-      {
-        action: "create",
-        file_path: `${entriesPath}/${targetFilename}`,
-        content: toBase64Unicode(generatedState.markdown),
-        encoding: "base64"
-      }
-    ];
+    const imagesPayload = pendingImages.map((image) => ({
+      path: image.path,
+      base64: image.base64
+    }));
+    const body = new URLSearchParams({
+      token: config.gitlabToken,
+      ref: branch,
+      "variables[TRIGGER_ACTION]": "create_entry",
+      "variables[ENTRY_FILENAME]": generatedState.filename,
+      "variables[ENTRY_MARKDOWN_BASE64]": toBase64Unicode(generatedState.markdown),
+      "variables[ENTRY_IMAGES_JSON_BASE64]": toBase64Unicode(JSON.stringify(imagesPayload)),
+      "variables[ENTRIES_PATH]": entriesPath,
+      "variables[TARGET_BRANCH]": branch
+    });
 
-    for (const image of pendingImages) {
-      actions.push({
-        action: "create",
-        file_path: image.path,
-        content: image.base64,
-        encoding: "base64"
-      });
-    }
-
-    setApiProgress("正在送出 GitLab commit...", 60);
-    const response = await fetch(`${apiBase}/repository/commits`, {
+    setApiProgress("正在觸發 GitLab pipeline...", 45);
+    const response = await fetch(`${apiBase}/trigger/pipeline`, {
       method: "POST",
       headers: {
         Accept: "application/json",
-        "Content-Type": "application/json",
-        "PRIVATE-TOKEN": config.gitlabToken
+        "Content-Type": "application/x-www-form-urlencoded"
       },
-      body: JSON.stringify({
-        branch,
-        commit_message: `docs: add troubleshooting entry ${targetFilename}`,
-        actions
-      })
+      body
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(errorText || `GitLab API 寫入失敗 ${response.status}`);
+      throw new Error(errorText || `GitLab pipeline 觸發失敗 ${response.status}`);
     }
 
     const result = await response.json();
-    const commitSha = result.id || "";
-    setApiProgress("已建立 commit，正在等待 GitLab CI 開始處理...", 72);
-    setApiStatus(`已寫入：${entriesPath}/${targetFilename}，正在等待 GitLab CI 重新產生搜尋索引與部署 Pages。`);
+    setApiProgress("已觸發 pipeline，正在等待 Pages 出現新資料...", 60);
+    setApiStatus(`已觸發 pipeline：${generatedState.filename}${result.web_url ? `（${result.web_url}）` : ""}`);
 
-    const pipeline = await waitForGitLabPipeline(apiBase, config.gitlabToken, branch, commitSha);
-    if (pipeline.status !== "success") {
-      throw new Error(`GitLab pipeline ${pipeline.status}。${pipeline.web_url || ""}`);
-    }
+    await waitForEntryPublished(generatedState.filename);
 
-    setApiProgress("GitLab CI 已完成，Pages 正在套用最新內容。", 100);
-    setApiStatus(`寫入完成：${entriesPath}/${targetFilename}`);
-    setRepoStatus(`GitLab pipeline 已成功${pipeline.web_url ? `：${pipeline.web_url}` : ""}。如果 Pages 還沒更新，請稍等後按「重新讀取資料」。`);
+    setApiProgress("新資料已部署到 Pages，可以重新查詢。", 100);
+    setApiStatus(`寫入完成：${entriesPath}/${generatedState.filename}`);
+    setRepoStatus("新資料已出現在 search-index.json。已重新讀取資料。");
     pendingImages = [];
     resetDraftFilename();
     editorUploadStatus.textContent = "待上傳圖片已送出。";
+    hasLoadedEntries = false;
+    await loadEntries();
     setTimeout(hideApiProgress, 2500);
   } catch (error) {
     setApiStatus(`寫入失敗: ${error.message}`);
@@ -725,111 +714,44 @@ function toBase64Unicode(value) {
   return btoa(unescape(encodeURIComponent(value)));
 }
 
-async function getAvailableGitLabFilename(apiBase, gitlabToken, branch, entriesPath, filename) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForEntryPublished(filename) {
   const baseName = filename.replace(/\.md$/i, "");
-  let candidate = filename;
-  let counter = 2;
+  const filenamePattern = new RegExp(`^${escapeRegExp(baseName)}(?:-\\d+)?\\.md$`, "i");
+  for (let attempt = 1; attempt <= 80; attempt += 1) {
+    const progress = Math.min(98, 60 + attempt * 0.45);
+    setApiProgress("Pipeline 已觸發，正在等待 GitLab Pages 更新搜尋索引...", progress);
 
-  while (await gitLabFileExists(apiBase, gitlabToken, branch, `${entriesPath}/${candidate}`)) {
-    candidate = `${baseName}-${counter}.md`;
-    counter += 1;
-  }
-
-  return candidate;
-}
-
-async function gitLabFileExists(apiBase, gitlabToken, branch, filePath) {
-  const response = await fetch(`${apiBase}/repository/files/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`, {
-    headers: {
-      "PRIVATE-TOKEN": gitlabToken
-    }
-  });
-
-  if (response.ok) {
-    return true;
-  }
-
-  if (response.status === 404) {
-    return false;
-  }
-
-  const errorText = await response.text();
-  throw new Error(errorText || `GitLab file check failed ${response.status}`);
-}
-
-async function waitForGitLabPipeline(apiBase, gitlabToken, branch, commitSha) {
-  let pipeline = null;
-  let lastMessage = "";
-  for (let attempt = 1; attempt <= 60; attempt += 1) {
-    pipeline = await findGitLabPipeline(apiBase, gitlabToken, branch, commitSha) || pipeline;
-    const progress = Math.min(98, 72 + attempt * 0.4);
-
-    if (pipeline) {
-      const status = pipeline.status || "unknown";
-      const message = describeGitLabPipelineStatus(status);
-      if (message !== lastMessage || attempt % 5 === 0) {
-        setApiProgress(message, progress);
-        lastMessage = message;
+    try {
+      const response = await fetch(`${localSearchIndexPath}?t=${Date.now()}`, { cache: "no-store" });
+      if (response.ok) {
+        const index = await response.json();
+        const items = Array.isArray(index) ? index : index.entries || [];
+        const found = items.some((item) => {
+          const sourceName = item.sourceName || String(item.path || "").split("/").pop() || item.filename || "";
+          const itemFilename = item.filename || sourceName;
+          const pathFilename = String(item.path || "").split("/").pop() || "";
+          return filenamePattern.test(sourceName) || filenamePattern.test(itemFilename) || filenamePattern.test(pathFilename);
+        });
+        if (found) {
+          return;
+        }
       }
-      if (["success", "failed", "canceled", "skipped", "manual"].includes(status)) {
-        return pipeline;
-      }
-    } else {
-      const message = "已寫入 repo，正在等待 GitLab CI 建立部署工作...";
-      if (message !== lastMessage || attempt % 5 === 0) {
-        setApiProgress(message, progress);
-        lastMessage = message;
-      }
+    } catch (error) {
+      console.warn("search-index polling failed", error);
     }
 
     await sleep(3000);
   }
 
-  throw new Error("等待 GitLab pipeline 逾時，請到 GitLab > Build > Pipelines 確認結果。");
+  throw new Error("已觸發 pipeline，但等待 Pages 更新逾時。請到 GitLab Pipelines 確認狀態，成功後再按重新讀取資料。");
 }
 
-function describeGitLabPipelineStatus(status) {
-  const messages = {
-    created: "GitLab CI 已建立工作，正在排隊準備執行...",
-    waiting_for_resource: "GitLab CI 正在等待可用資源...",
-    preparing: "GitLab CI 正在準備執行環境...",
-    pending: "GitLab CI 正在排隊，等待 runner 執行...",
-    running: "GitLab CI 正在重建搜尋索引並部署 Pages...",
-    success: "GitLab CI 已完成，Pages 正在套用最新內容。",
-    failed: "GitLab CI 執行失敗，請到 GitLab Pipelines 查看錯誤。",
-    canceled: "GitLab CI 已取消，資料可能尚未部署到 Pages。",
-    skipped: "GitLab CI 已略過，請確認分支與 .gitlab-ci.yml 規則。",
-    manual: "GitLab CI 等待手動執行，請到 GitLab Pipelines 確認。"
-  };
-  return messages[status] || `GitLab CI 狀態：${status || "未知"}，請稍候...`;
-}
-
-async function findGitLabPipeline(apiBase, gitlabToken, branch, commitSha) {
-  const query = new URLSearchParams({
-    ref: branch,
-    per_page: "5"
-  });
-  if (commitSha) {
-    query.set("sha", commitSha);
-  }
-
-  const response = await fetch(`${apiBase}/pipelines?${query.toString()}`, {
-    headers: {
-      "PRIVATE-TOKEN": gitlabToken
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `GitLab pipelines API failed ${response.status}`);
-  }
-
-  const pipelines = await response.json();
-  return pipelines[0] || null;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function downloadMarkdown() {
