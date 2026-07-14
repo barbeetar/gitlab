@@ -1,36 +1,36 @@
-[
-  {
-    "path": "entries/2026-07-01-manufacturing-erp-export-failed.md",
-    "sourceName": "2026-07-01-manufacturing-erp-export-failed.md",
-    "title": "ERP 匯出報表失敗",
-    "date": "2026-07-01",
-    "unit": "製造部",
-    "tags": [
-      "ERP",
-      "報表",
-      "權限"
-    ],
-    "screenshot": "",
-    "screenshotImage": "",
-    "symptom": "操作人員在 ERP 點擊匯出報表後，等待約三十秒，畫面顯示無法建立輸出檔案，且同批機台皆可重現。",
-    "cause": "檢查應用程式與檔案伺服器權限後，確認匯出服務帳號在共享資料夾的寫入權限被移除。",
-    "solution": "補回共享資料夾權限並重新啟動匯出服務，完成後重新測試報表匯出，結果正常。"
-  },
-  {
-    "path": "entries/2026-07-07-cs-login-timeout.md",
-    "sourceName": "2026-07-07-cs-login-timeout.md",
-    "title": "客服後台登入逾時",
-    "date": "2026-07-07",
-    "unit": "客服部",
-    "tags": [
-      "Login",
-      "Timeout",
-      "VPN"
-    ],
-    "screenshot": "",
-    "screenshotImage": "",
-    "symptom": "客服人員登入後台系統時，驗證畫面停留很久，最後顯示逾時錯誤，僅在外點辦公環境發生。",
-    "cause": "比對網路路由後發現外點 VPN DNS 設定異常，導致身份驗證服務解析到舊的主機位址。",
-    "solution": "更新 VPN DNS 設定並重新連線，再次登入後系統恢復正常，同步補上 VPN 設定檢查清單。"
-  }
+﻿[
+    {
+        "path":  "entries/2026-07-01-manufacturing-erp-export-failed.md",
+        "sourceName":  "2026-07-01-manufacturing-erp-export-failed.md",
+        "title":  "ERP 匯出報表失敗",
+        "date":  "2026-07-01",
+        "unit":  "製造部",
+        "tags":  [
+                     "ERP",
+                     "報表",
+                     "權限"
+                 ],
+        "screenshot":  "",
+        "screenshotImage":  "",
+        "symptom":  "操作人員在 ERP 點擊匯出報表後，等待約三十秒，畫面顯示無法建立輸出檔案，且同批機台皆可重現。",
+        "cause":  "檢查應用程式與檔案伺服器權限後，確認匯出服務帳號在共享資料夾的寫入權限被移除。",
+        "solution":  "補回共享資料夾權限並重新啟動匯出服務，完成後重新測試報表匯出，結果正常。"
+    },
+    {
+        "path":  "entries/2026-07-07-cs-login-timeout.md",
+        "sourceName":  "2026-07-07-cs-login-timeout.md",
+        "title":  "客服後台登入逾時",
+        "date":  "2026-07-07",
+        "unit":  "客服部",
+        "tags":  [
+                     "Login",
+                     "Timeout",
+                     "VPN"
+                 ],
+        "screenshot":  "",
+        "screenshotImage":  "",
+        "symptom":  "客服人員登入後台系統時，驗證畫面停留很久，最後顯示逾時錯誤，僅在外點辦公環境發生。",
+        "cause":  "比對網路路由後發現外點 VPN DNS 設定異常，導致身份驗證服務解析到舊的主機位址。",
+        "solution":  "更新 VPN DNS 設定並重新連線，再次登入後系統恢復正常，同步補上 VPN 設定檢查清單。"
+    }
 ]
