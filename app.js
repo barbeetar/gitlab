@@ -50,10 +50,10 @@ let pendingImages = [];
 let draftFilenameKey = "";
 let draftTimestampSuffix = "";
 const apiConfigStorageKey = "troubleshooting-actions-config";
-const maxImageWidth = 1400;
-const maxImageHeight = 1000;
-const maxSingleImageBase64Chars = 450000;
-const maxImagesPayloadChars = 650000;
+const maxImageWidth = 900;
+const maxImageHeight = 650;
+const maxSingleImageBase64Chars = 90000;
+const maxImagesPayloadChars = 120000;
 
 function setLoadingStatus(message, progress = 0, visible = true) {
   loadingStatus.classList.toggle("hidden", !visible);
@@ -503,6 +503,9 @@ function loadImage(dataUrl) {
 async function prepareImageForRepo(file) {
   if (/image\/(gif|svg\+xml)/i.test(file.type)) {
     const base64 = await readFileAsBase64(file);
+    if (base64.length > maxSingleImageBase64Chars) {
+      throw new Error("GIF/SVG 圖片太大，請改用較小的 PNG/JPG 截圖。");
+    }
     return {
       path: `assets/${safeAssetName(file.name)}`,
       base64,
@@ -513,33 +516,37 @@ async function prepareImageForRepo(file) {
 
   const dataUrl = await readFileAsDataUrl(file);
   const image = await loadImage(dataUrl);
-  const ratio = Math.min(1, maxImageWidth / image.width, maxImageHeight / image.height);
-  const width = Math.max(1, Math.round(image.width * ratio));
-  const height = Math.max(1, Math.round(image.height * ratio));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(image, 0, 0, width, height);
+  const initialRatio = Math.min(1, maxImageWidth / image.width, maxImageHeight / image.height);
+  const scales = [1, 0.85, 0.7, 0.55, 0.42];
+  const qualities = [0.72, 0.62, 0.52, 0.42];
 
-  const qualities = [0.82, 0.72, 0.62, 0.52];
-  let compressedDataUrl = "";
-  for (const quality of qualities) {
-    compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
-    const base64 = compressedDataUrl.includes(",") ? compressedDataUrl.split(",")[1] : compressedDataUrl;
-    if (base64.length <= maxSingleImageBase64Chars || quality === qualities[qualities.length - 1]) {
-      return {
-        path: `assets/${safeCompressedAssetName(file.name)}`,
-        base64,
-        name: file.name,
-        previewUrl: compressedDataUrl
-      };
+  for (const scale of scales) {
+    const ratio = initialRatio * scale;
+    const width = Math.max(1, Math.round(image.width * ratio));
+    const height = Math.max(1, Math.round(image.height * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of qualities) {
+      const compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
+      const base64 = compressedDataUrl.includes(",") ? compressedDataUrl.split(",")[1] : compressedDataUrl;
+      if (base64.length <= maxSingleImageBase64Chars) {
+        return {
+          path: `assets/${safeCompressedAssetName(file.name)}`,
+          base64,
+          name: file.name,
+          previewUrl: compressedDataUrl
+        };
+      }
     }
   }
 
-  throw new Error("圖片壓縮失敗。");
+  throw new Error("圖片仍然太大，請縮小截圖範圍後再貼上。");
 }
 
 async function handleEditorImageFiles(files) {
@@ -875,7 +882,7 @@ function buildImagesTsv(images) {
 }
 
 function validateImagesPayload(images) {
-  const payloadLength = buildImagesTsv(images).length;
+  const payloadLength = toBase64Unicode(buildImagesTsv(images)).length;
   if (payloadLength > maxImagesPayloadChars) {
     throw new Error(`待上傳圖片太大，目前約 ${Math.ceil(payloadLength / 1024)} KB，請減少圖片數量或縮小截圖範圍後再寫入。`);
   }
