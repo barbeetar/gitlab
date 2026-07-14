@@ -50,6 +50,10 @@ let pendingImages = [];
 let draftFilenameKey = "";
 let draftTimestampSuffix = "";
 const apiConfigStorageKey = "troubleshooting-actions-config";
+const maxImageWidth = 1400;
+const maxImageHeight = 1000;
+const maxSingleImageBase64Chars = 450000;
+const maxImagesPayloadChars = 650000;
 
 function setLoadingStatus(message, progress = 0, visible = true) {
   loadingStatus.classList.toggle("hidden", !visible);
@@ -460,6 +464,12 @@ function safeAssetName(fileName) {
   return `${uniquePart}-${baseName}.${extension}`;
 }
 
+function safeCompressedAssetName(fileName) {
+  const baseName = slugify(fileName.replace(/\.[^.]+$/, "")) || "image";
+  const uniquePart = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${uniquePart}-${baseName}.jpg`;
+}
+
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -470,6 +480,66 @@ function readFileAsBase64(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("圖片讀取失敗，無法壓縮。"));
+    image.src = dataUrl;
+  });
+}
+
+async function prepareImageForRepo(file) {
+  if (/image\/(gif|svg\+xml)/i.test(file.type)) {
+    const base64 = await readFileAsBase64(file);
+    return {
+      path: `assets/${safeAssetName(file.name)}`,
+      base64,
+      name: file.name,
+      previewUrl: URL.createObjectURL(file)
+    };
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const ratio = Math.min(1, maxImageWidth / image.width, maxImageHeight / image.height);
+  const width = Math.max(1, Math.round(image.width * ratio));
+  const height = Math.max(1, Math.round(image.height * ratio));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const qualities = [0.82, 0.72, 0.62, 0.52];
+  let compressedDataUrl = "";
+  for (const quality of qualities) {
+    compressedDataUrl = canvas.toDataURL("image/jpeg", quality);
+    const base64 = compressedDataUrl.includes(",") ? compressedDataUrl.split(",")[1] : compressedDataUrl;
+    if (base64.length <= maxSingleImageBase64Chars || quality === qualities[qualities.length - 1]) {
+      return {
+        path: `assets/${safeCompressedAssetName(file.name)}`,
+        base64,
+        name: file.name,
+        previewUrl: compressedDataUrl
+      };
+    }
+  }
+
+  throw new Error("圖片壓縮失敗。");
 }
 
 async function handleEditorImageFiles(files) {
@@ -483,15 +553,14 @@ async function handleEditorImageFiles(files) {
     if (!file.type.startsWith("image/")) {
       continue;
     }
-    const path = `assets/${safeAssetName(file.name)}`;
-    const base64 = await readFileAsBase64(file);
-    pendingImages.push({ path, base64, name: file.name, previewUrl: URL.createObjectURL(file) });
-    snippets.push(`![${file.name}](${path})`);
+    const preparedImage = await prepareImageForRepo(file);
+    pendingImages.push(preparedImage);
+    snippets.push(`![${preparedImage.name}](${preparedImage.path})`);
   }
 
   if (snippets.length) {
     insertBlockIntoEditor(snippets.join("\n\n"));
-    editorUploadStatus.textContent = `已加入 ${pendingImages.length} 張待上傳圖片，按「寫入 Repo」時會一起上傳。`;
+    editorUploadStatus.textContent = `已加入 ${pendingImages.length} 張待上傳圖片，圖片會先壓縮後再送到 pipeline。`;
     updatePreviewFromCurrentForm();
   }
 
@@ -508,16 +577,15 @@ async function handleScreenshotFile(file) {
     return;
   }
 
-  const path = `assets/${safeAssetName(file.name)}`;
-  const base64 = await readFileAsBase64(file);
-  pendingImages.push({ path, base64, name: file.name, previewUrl: URL.createObjectURL(file) });
+  const preparedImage = await prepareImageForRepo(file);
+  pendingImages.push(preparedImage);
 
   const screenshotImageField = form.elements.namedItem("screenshotImage");
   if (screenshotImageField) {
-    screenshotImageField.value = path;
+    screenshotImageField.value = preparedImage.path;
   }
 
-  editorUploadStatus.textContent = `已加入問題現象截圖：${path}。按「寫入 Repo」時會上傳到 repo。`;
+  editorUploadStatus.textContent = `已加入問題現象截圖：${preparedImage.path}。圖片已壓縮，按「寫入 Repo」時會上傳到 repo。`;
   updatePreviewFromCurrentForm();
 }
 
@@ -714,13 +782,15 @@ async function saveMarkdownToRepo() {
   setApiProgress("正在準備 pipeline payload...", 25);
 
   try {
+    validateImagesPayload(pendingImages);
+    const imagesPayload = buildImagesTsv(pendingImages);
     const body = new URLSearchParams({
       token: config.gitlabToken,
       ref: branch,
       "variables[TRIGGER_ACTION]": "create_entry",
       "variables[ENTRY_FILENAME]": generatedState.filename,
       "variables[ENTRY_MARKDOWN_BASE64]": toBase64Unicode(generatedState.markdown),
-      "variables[ENTRY_IMAGES_TSV_BASE64]": toBase64Unicode(buildImagesTsv(pendingImages)),
+      "variables[ENTRY_IMAGES_TSV_BASE64]": toBase64Unicode(imagesPayload),
       "variables[ENTRIES_PATH]": entriesPath,
       "variables[TARGET_BRANCH]": branch
     });
@@ -802,6 +872,13 @@ function buildImagesTsv(images) {
     .map((image) => `${image.path}\t${image.base64}`)
     .join("\n");
   return rows ? `${rows}\n` : "";
+}
+
+function validateImagesPayload(images) {
+  const payloadLength = buildImagesTsv(images).length;
+  if (payloadLength > maxImagesPayloadChars) {
+    throw new Error(`待上傳圖片太大，目前約 ${Math.ceil(payloadLength / 1024)} KB，請減少圖片數量或縮小截圖範圍後再寫入。`);
+  }
 }
 
 function sleep(ms) {
