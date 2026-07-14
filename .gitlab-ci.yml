@@ -3,18 +3,18 @@ stages:
   - deploy
 
 commit_entry:
-  image: ruby:3.3
   stage: write
   script:
-    - ruby scripts/commit-entry-from-ci.rb
+    - node --version
+    - node scripts/commit-entry-from-ci.js
   rules:
     - if: $TRIGGER_ACTION == "create_entry"
 
 pages:
-  image: ruby:3.3
   stage: deploy
   script:
-    - ruby scripts/build-search-index.rb
+    - node --version
+    - node scripts/build-search-index.js
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
     - cp -r entries public/

@@ -45,6 +45,8 @@
 
 如果 pipeline 成功，GitLab Pages 會發布 `public/` 內的網站檔案，包含 `index.html`、`style.css`、`app.js`、`entries/` 和 `assets/`。
 
+目前 `.gitlab-ci.yml` 不指定外部 Docker image，避免公司 runner 無法從 Docker Hub 拉 `node:20-alpine`。請確認公司 runner 預設環境有 Node.js；如果沒有，請改用公司允許的內部 Node image。
+
 ## 建立 GitLab 寫入 Token
 
 建議使用 Project access token，不建議使用個人 Personal access token。這個 token 不要填在網頁上，請放在 GitLab CI/CD Variables。

@@ -29,17 +29,19 @@
 .nojekyll
 ```
 
-## CI Image
+## CI 執行環境
 
-目前 `.gitlab-ci.yml` 使用：
+目前 `.gitlab-ci.yml` 不指定 Docker image，避免公司 runner 因為無法連到 Docker Hub 而出現 `ErrImagePull` / `ImagePullBackOff`。
 
-```yaml
-image: node:20-alpine
+這代表 GitLab runner 的預設執行環境需要有 Node.js。CI 會先執行：
+
+```text
+node --version
 ```
 
-如果公司 runner 不允許這個 image，但 runner 本身已經有 Node.js，可以把 `image: node:20-alpine` 刪掉。
+如果這一步失敗，代表 runner 預設環境沒有 Node.js。
 
-如果公司有指定可用 image，請改成公司允許的 Node image，例如：
+若公司有指定可用的內部 Node image，請在 `.gitlab-ci.yml` 的 `commit_entry` 和 `pages` job 加上公司允許的 image，例如：
 
 ```yaml
 image: your-company-node-image:20
