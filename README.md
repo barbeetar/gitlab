@@ -23,8 +23,8 @@
 |-- GITLAB_DEPLOY.md
 |-- .gitlab-ci.yml
 |-- scripts
-|   |-- build-search-index.rb
-|   `-- commit-entry-from-ci.rb
+|   |-- build-search-index.js
+|   `-- commit-entry-from-ci.js
 `-- entries
     |-- example.md
     |-- index.json
@@ -38,7 +38,7 @@
 1. 建立一個 GitLab project。
 2. 把這個資料夾內的檔案上傳到 repo 根目錄。
 3. 確認 repo 根目錄有 `.gitlab-ci.yml`。
-4. 確認 repo 內有 `scripts/build-search-index.rb`。
+4. 確認 repo 內有 `scripts/build-search-index.js` 和 `scripts/commit-entry-from-ci.js`。
 5. 確認 repo 內有 `entries/` 資料夾。
 6. 到 `Build > Pipelines` 查看 pipeline 是否成功。
 7. 到 `Deploy > Pages` 查看 GitLab Pages 網址。
@@ -137,7 +137,7 @@ https://gitlab.example.com
 2. 按 `下載檔案` 或 `複製內容`。
 3. 到 GitLab repo 的 `entries/` 新增 `.md` 檔案。
 4. Commit 到部署分支。
-5. GitLab CI 會執行 `scripts/build-search-index.rb`。
+5. GitLab CI 會執行 `scripts/build-search-index.js`。
 6. `entries/search-index.json` 會在 Pages 部署產物中被重建。
 7. Pipeline 成功、Pages 更新後，網站就能查到資料。
 
@@ -173,8 +173,8 @@ screenshotImage: assets/erp-export-error.png
 
 代表 Pages 部署產物裡沒有產生搜尋索引。請確認：
 
-- `.gitlab-ci.yml` 有執行 `ruby scripts/build-search-index.rb`
-- `scripts/build-search-index.rb` 有上傳到 repo
+- `.gitlab-ci.yml` 有執行 `node scripts/build-search-index.js`
+- `scripts/build-search-index.js` 有上傳到 repo
 - `entries/` 內至少有 Markdown 檔案
 - pipeline 是成功狀態
 
