@@ -123,9 +123,11 @@ EOF
 if [ -n "${ENTRY_IMAGES_TSV_BASE64:-}" ]; then
   printf "%s" "$ENTRY_IMAGES_TSV_BASE64" > /tmp/entry-images.tsv.b64
   decode_base64_file /tmp/entry-images.tsv.b64 /tmp/entry-images.tsv
-  while IFS="$(printf '\t')" read -r image_path image_base64; do
+  image_count=0
+  while IFS="$(printf '\t')" read -r image_path image_base64 || [ -n "$image_path" ]; do
     [ -n "$image_path" ] || continue
     [ -n "$image_base64" ] || continue
+    image_count=$((image_count + 1))
     image_path_json=$(printf "%s" "$image_path" | json_escape)
     cat >> /tmp/actions.json <<EOF
 ,
@@ -137,6 +139,9 @@ if [ -n "${ENTRY_IMAGES_TSV_BASE64:-}" ]; then
     }
 EOF
   done < /tmp/entry-images.tsv
+  echo "Prepared $image_count image file action(s)."
+else
+  echo "No image payload received."
 fi
 
 cat > /tmp/payload.json <<EOF
