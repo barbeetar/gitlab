@@ -1,5 +1,6 @@
 const entriesIndexPath = "entries/index.json";
 const localSearchIndexPath = "entries/search-index.json";
+const localIssuesIndexPath = "data/issues.json";
 
 const form = document.getElementById("entry-form");
 const markdownOutput = document.getElementById("markdown-output");
@@ -699,9 +700,6 @@ function getApiConfig() {
   return {
     gitlabProjectId: String(data.gitlabProjectId || "").trim(),
     gitlabToken: String(data.gitlabToken || "").trim(),
-    issueToken: String(data.issueToken || "").trim(),
-    issueState: String(data.issueState || "all").trim(),
-    issueLabels: String(data.issueLabels || "").trim(),
     gitlabBaseUrl: normalizeGitLabBaseUrl(data.gitlabBaseUrl || "https://gitlab.com"),
     entriesPath: normalizeRelativePath(data.entriesPath || "entries"),
     branch: String(data.branch || "").trim()
@@ -766,53 +764,13 @@ function buildEntryFromGitLabIssue(issue, config) {
 
 async function loadGitLabIssues() {
   const config = getApiConfig();
-  if (!config.gitlabProjectId) {
-    throw new Error("請先在 GitLab Pipeline 設定填入 GitLab Project ID。");
+  setLoadingStatus(`正在讀取 ${localIssuesIndexPath}...`, 35);
+  const response = await fetch(`${localIssuesIndexPath}?t=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`無法載入 ${localIssuesIndexPath}。請確認 GitLab Pages pipeline 已成功產生 issues.json。`);
   }
-
-  const params = new URLSearchParams({
-    per_page: "100",
-    scope: "all",
-    order_by: "updated_at",
-    sort: "desc"
-  });
-  if (config.issueState && config.issueState !== "all") {
-    params.set("state", config.issueState);
-  }
-  if (config.issueLabels) {
-    params.set("labels", config.issueLabels);
-  }
-
-  const headers = { Accept: "application/json" };
-  if (config.issueToken) {
-    headers["PRIVATE-TOKEN"] = config.issueToken;
-  }
-
-  const issues = [];
-  let page = 1;
-  while (page <= 10) {
-    params.set("page", String(page));
-    const url = `${config.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}/issues?${params}`;
-    setLoadingStatus(`正在讀取 GitLab Issues：第 ${page} 頁`, Math.min(85, 15 + page * 8));
-    const response = await fetch(url, { headers, cache: "no-store" });
-    if (!response.ok) {
-      const message = response.status === 401 || response.status === 403
-        ? "GitLab Issues 讀取失敗：token 無效或權限不足。"
-        : response.status === 404
-          ? "GitLab Issues 讀取失敗：找不到 project，或 private project 需要 Issue 讀取 Token。"
-          : `GitLab Issues API error ${response.status}`;
-      throw new Error(message);
-    }
-
-    const pageItems = await response.json();
-    issues.push(...pageItems);
-    const nextPage = response.headers.get("x-next-page");
-    if (!nextPage) {
-      break;
-    }
-    page = Number(nextPage);
-  }
-
+  const issuesIndex = await response.json();
+  const issues = Array.isArray(issuesIndex) ? issuesIndex : issuesIndex.issues || [];
   return sortEntries(issues.map((issue) => buildEntryFromGitLabIssue(issue, config)));
 }
 
@@ -822,17 +780,12 @@ function saveApiConfig() {
     gitlabProjectId: config.gitlabProjectId,
     gitlabBaseUrl: config.gitlabBaseUrl,
     entriesPath: config.entriesPath,
-    branch: config.branch,
-    issueState: config.issueState,
-    issueLabels: config.issueLabels
+    branch: config.branch
   }));
   const tokenNote = config.gitlabToken
     ? "目前頁面已有 Pipeline Trigger Token，可觸發寫入 pipeline；重新開頁後需重新貼上。"
     : "Pipeline Trigger Token 欄位目前是空的，無法觸發寫入 pipeline。";
-  const issueTokenNote = config.issueToken
-    ? "Issue 讀取 Token 已套用於本次頁面；重新開頁後需重新貼上。"
-    : "Issue 讀取 Token 未填，僅可讀公開 Issues 或同源允許的資料。";
-  setApiStatus(`已儲存 Project ID、Markdown 目錄、Branch、Base URL 與 Issues 篩選。${tokenNote} ${issueTokenNote}`);
+  setApiStatus(`已儲存 Project ID、Markdown 目錄、Branch 與 Base URL。${tokenNote} GitLab Issues 查詢會讀取 CI 產生的 ${localIssuesIndexPath}。`);
   allEntries = [];
   filteredEntries = [];
   hasLoadedEntries = false;
@@ -854,17 +807,11 @@ function restoreApiConfig() {
     const baseUrlField = apiForm.elements.namedItem("gitlabBaseUrl");
     const entriesPathField = apiForm.elements.namedItem("entriesPath");
     const branchField = apiForm.elements.namedItem("branch");
-    const issueTokenField = apiForm.elements.namedItem("issueToken");
-    const issueStateField = apiForm.elements.namedItem("issueState");
-    const issueLabelsField = apiForm.elements.namedItem("issueLabels");
     if (projectIdField) {
       projectIdField.value = config.gitlabProjectId || "";
     }
     if (tokenField) {
       tokenField.value = "";
-    }
-    if (issueTokenField) {
-      issueTokenField.value = "";
     }
     if (baseUrlField) {
       baseUrlField.value = config.gitlabBaseUrl || "https://gitlab.com";
@@ -875,13 +822,7 @@ function restoreApiConfig() {
     if (branchField) {
       branchField.value = config.branch || "";
     }
-    if (issueStateField) {
-      issueStateField.value = config.issueState || "all";
-    }
-    if (issueLabelsField) {
-      issueLabelsField.value = config.issueLabels || "";
-    }
-    setApiStatus("已載入 Project ID、Markdown 目錄、Branch、Base URL 與 Issues 篩選。Pipeline Trigger Token / Issue 讀取 Token 不會長期儲存。");
+    setApiStatus(`已載入 Project ID、Markdown 目錄、Branch 與 Base URL。Pipeline Trigger Token 不會長期儲存；GitLab Issues 查詢讀取 ${localIssuesIndexPath}。`);
   } catch (error) {
     console.error(error);
   }
@@ -1377,13 +1318,13 @@ async function loadEntries() {
   const source = searchSourceSelect?.value || "markdown";
   if (source === "issues") {
     try {
-      setRepoStatus("GitLab Issues 模式：正在讀取 project issues。");
-      setLoadingStatus("正在連線 GitLab Issues API...", 10);
+      setRepoStatus(`GitLab Issues 模式：正在讀取 ${localIssuesIndexPath}。`);
+      setLoadingStatus("正在讀取 GitLab Issues 快取資料...", 10);
       allEntries = await loadGitLabIssues();
       hasLoadedEntries = true;
       updateUnitOptions();
       filterEntries();
-      setRepoStatus(`已從 GitLab Issues 載入 ${allEntries.length} 筆資料。`);
+      setRepoStatus(`已從 ${localIssuesIndexPath} 載入 ${allEntries.length} 筆 GitLab Issues 資料。`);
       hideLoadingStatus();
     } catch (error) {
       allEntries = [];

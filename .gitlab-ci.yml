@@ -1,22 +1,37 @@
 stages:
   - write
+  - index
   - deploy
 
 commit_entry:
   stage: write
+  before_script:
+    - apk add --no-cache curl
   script:
     - sh scripts/commit-entry-from-ci.sh
   rules:
     - if: $TRIGGER_ACTION == "create_entry"
 
+update_search_index:
+  stage: index
+  before_script:
+    - apk add --no-cache curl
+  script:
+    - sh scripts/update-search-index-from-ci.sh
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
+
 pages:
   stage: deploy
+  before_script:
+    - apk add --no-cache curl
   script:
     - sh scripts/build-search-index.sh
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
     - cp -r entries public/
     - if [ -d assets ]; then cp -r assets public/; fi
+    - sh scripts/build-issues-index.sh
   pages: true
   artifacts:
     paths:

@@ -33,12 +33,15 @@ pages:
   stage: deploy
   tags:
     - your-company-runner-tag
+  before_script:
+    - apk add --no-cache curl
   script:
     - sh scripts/build-search-index.sh
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
     - cp -r entries public/
     - if [ -d assets ]; then cp -r assets public/; fi
+    - sh scripts/build-issues-index.sh
   pages: true
   artifacts:
     paths:

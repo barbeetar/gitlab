@@ -16,6 +16,7 @@
 |-- .gitlab-ci.yml
 |-- scripts
 |   |-- build-search-index.sh
+|   |-- build-issues-index.sh
 |   |-- commit-entry-from-ci.sh
 |   `-- update-search-index-from-ci.sh
 `-- entries
@@ -82,6 +83,31 @@ Protect variable: 只有部署分支是 protected branch 時才勾
 
 `GITLAB_WRITE_TOKEN` 不會出現在前端，只有 GitLab runner 會讀到。
 
+如果要讓網站讀取 private GitLab Issues，另新增：
+
+```text
+Key: GITLAB_ISSUES_TOKEN
+Value: 可讀 Issues API 的 Project access token
+Type: Variable
+Environment scope: All
+Mask variable: 建議勾選
+Protect variable: 只有部署分支是 protected branch 時才勾
+```
+
+建議 scopes：
+
+```text
+read_api
+```
+
+可選篩選變數：
+
+```text
+ISSUE_STATE=all
+ISSUE_LABELS=troubleshooting,ERP
+ISSUE_MAX_PAGES=10
+```
+
 ## Pipeline Trigger Token
 
 到：
@@ -104,31 +130,31 @@ Pipeline Trigger Token: pipeline trigger token
 Markdown 目錄: entries
 Branch: main 或你的部署分支
 GitLab Base URL: https://gitlab.com
-Issue 讀取 Token: 選填，private project 才需要
-Issue 狀態: all / opened / closed
-Issue Labels: 選填，例如 troubleshooting,ERP
 ```
 
 如果是公司 self-managed GitLab，`GitLab Base URL` 改成公司 GitLab 網址。
 
 ## GitLab Issues 查詢模式
 
-網站可以切換資料來源為 `GitLab Issues`，直接讀取 project issues：
+網站可以切換資料來源為 `GitLab Issues`，但前端不直接連 GitLab Issues API。Issues 由 GitLab CI 在 Pages 部署時產生：
 
 ```text
 GitLab issue template
 -> 使用者在 GitLab Issues 新增 issue 並套用 template
 -> issue description 內可直接貼圖片
--> 網站呼叫 GitLab Issues API
+-> pages job 執行 scripts/build-issues-index.sh
+-> Runner 使用 GITLAB_ISSUES_TOKEN 讀 GitLab Issues API
+-> 產生 public/data/issues.json
+-> 前端讀取 data/issues.json
 -> issue description 以 Markdown 文件樣式顯示
 ```
 
 注意：
 
-- 讀 Issues 不需要 pipeline。
-- Public project 可不填 `Issue 讀取 Token`。
-- Private project 通常需要在網站本次輸入可讀 issue 的 token；此 token 不會長期儲存。
-- 如果公司 GitLab API 不允許 CORS，GitLab Pages 前端可能無法直接讀 Issues API，需改用後端代理或 OAuth。
+- 前端不保存 Issues API token，也不會碰到 CORS。
+- Private issues 會被轉成 `data/issues.json` 放進 Pages 部署產物。
+- 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容會被能打開 Pages 的人讀到。
+- 沒有設定 `GITLAB_ISSUES_TOKEN` 時，CI 會產生空的 `data/issues.json`。
 
 ## 寫入流程
 
