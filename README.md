@@ -27,6 +27,8 @@
 |   |-- build-search-index.sh
 |   |-- build-issues-index.sh
 |   |-- commit-entry-from-ci.sh
+|   |-- sync-issue-assets.js
+|   |-- rewrite-issue-assets.js
 |   `-- update-search-index-from-ci.sh
 `-- entries
     |-- example.md
@@ -34,14 +36,14 @@
     `-- search-index.json
 ```
 
-`entries/search-index.json` 是 Markdown Repo 的主要查詢來源。`data/issues.json` 是 GitLab Issues 模式的查詢來源，由 GitLab CI 在 Pages 部署時產生。Issue 內貼上的圖片會由 CI 下載到 `data/issue-assets/`，避免 private GitLab uploads 在前端顯示 404。
+`entries/search-index.json` 是 Markdown Repo 的主要查詢來源。`data/issues.json` 是 GitLab Issues 模式的查詢來源，由 GitLab CI 在 Pages 部署時產生。Issue 內貼上的圖片會由 CI 同步到 repo 的 `assets/issue-assets/`，避免 private GitLab uploads 在前端顯示 404。
 
 ## 第一次部署
 
 1. 建立一個 GitLab project。
 2. 把這個資料夾內的檔案上傳到 repo 根目錄。
 3. 確認 repo 根目錄有 `.gitlab-ci.yml`。
-4. 確認 repo 內有 `scripts/build-search-index.sh`、`scripts/build-issues-index.sh`、`scripts/commit-entry-from-ci.sh` 和 `scripts/update-search-index-from-ci.sh`。
+4. 確認 repo 內有 `scripts/build-search-index.sh`、`scripts/build-issues-index.sh`、`scripts/sync-issue-assets.js`、`scripts/rewrite-issue-assets.js`、`scripts/commit-entry-from-ci.sh` 和 `scripts/update-search-index-from-ci.sh`。
 5. 確認 repo 內有 `entries/` 資料夾。
 6. 到 `Build > Pipelines` 查看 pipeline 是否成功。
 7. 到 `Deploy > Pages` 查看 GitLab Pages 網址。
@@ -118,7 +120,7 @@ ISSUE_LABELS=troubleshooting,ERP
 ISSUE_MAX_PAGES=10
 ```
 
-`GITLAB_ISSUES_TOKEN` 只會在 GitLab runner 裡使用。前端只讀部署後的 `data/issues.json`。
+`GITLAB_ISSUES_TOKEN` 只會在 GitLab runner 裡使用。前端只讀部署後的 `data/issues.json` 和 repo 內的 `assets/issue-assets/`。
 
 ## 建立 Pipeline Trigger Token
 
@@ -189,10 +191,11 @@ https://gitlab.example.com
 
 - 前端不直接呼叫 GitLab Issues API，也不需要輸入 Issue token。
 - Private issues 由 GitLab CI 使用 `GITLAB_ISSUES_TOKEN` 讀取後產生 `public/data/issues.json`。
-- CI 會把 issue 圖片下載到 `public/data/issue-assets/` 並改寫 description 圖片連結。
+- `sync_issue_assets` job 會把 issue 圖片下載並 commit 到 repo 的 `assets/issue-assets/`。
+- Pages job 會把 description 圖片連結改寫成 `assets/issue-assets/...`。
 - 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容與圖片會透過 Pages 被能開網站的人讀到。
 - 可用 CI/CD Variables `ISSUE_STATE`、`ISSUE_LABELS`、`ISSUE_MAX_PAGES` 控制 CI 產生的 Issues 範圍。
-- GitLab issue 內貼上的圖片如果是 `/uploads/...`，CI 會嘗試用 `GITLAB_ISSUES_TOKEN` 下載並改成 `data/issue-assets/...`。
+- GitLab issue 內貼上的圖片如果是 `/uploads/...`，CI 會嘗試用 `GITLAB_ISSUES_TOKEN` 下載、commit 到 repo 的 `assets/issue-assets/`，並在 Pages 產生的 `data/issues.json` 內改寫圖片連結。
 - 如果圖片仍顯示破圖，請檢查 Pages pipeline log 是否有 `Failed to download issue image`。
 
 ### 重新讀取資料

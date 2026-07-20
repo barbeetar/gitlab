@@ -1,6 +1,7 @@
 stages:
   - write
   - index
+  - assets
   - deploy
 
 commit_entry:
@@ -21,8 +22,24 @@ update_search_index:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
 
+sync_issue_assets:
+  stage: assets
+  before_script:
+    - apk add --no-cache curl nodejs
+  script:
+    - node scripts/sync-issue-assets.js
+  artifacts:
+    paths:
+      - assets/issue-assets/
+    expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
+
 pages:
   stage: deploy
+  needs:
+    - job: sync_issue_assets
+      artifacts: true
   before_script:
     - apk add --no-cache curl nodejs
   script:

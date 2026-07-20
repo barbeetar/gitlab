@@ -1,66 +1,10 @@
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const crypto = require("crypto");
 
 const issuesPath = process.argv[2] || "public/data/issues.json";
-const outputDir = process.argv[3] || "public/data/issue-assets";
-const token = process.env.GITLAB_ISSUES_TOKEN || "";
-
-if (!token) {
-  process.exit(0);
-}
-
 const issues = JSON.parse(fs.readFileSync(issuesPath, "utf8"));
-fs.mkdirSync(outputDir, { recursive: true });
-
-function getProjectBase(issue) {
-  return String(issue.web_url || "").split("/-/issues/")[0].replace(/\/$/, "");
-}
-
-function normalizeUrl(value, issue) {
-  const raw = String(value || "").trim();
-  if (!raw || /^(data:|blob:|mailto:|#)/i.test(raw)) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(raw)) {
-    return raw;
-  }
-  if (raw.startsWith("//")) {
-    return `https:${raw}`;
-  }
-
-  const projectBase = getProjectBase(issue);
-  if (!projectBase) {
-    return "";
-  }
-  if (raw.startsWith("/uploads/")) {
-    return `${projectBase}${raw}`;
-  }
-  if (raw.startsWith("uploads/")) {
-    return `${projectBase}/${raw}`;
-  }
-
-  try {
-    return new URL(raw, `${projectBase}/`).toString();
-  } catch (_error) {
-    return "";
-  }
-}
-
-function extensionFromUrl(url) {
-  const pathname = new URL(url).pathname;
-  const extension = path.extname(pathname).toLowerCase();
-  return extension && extension.length <= 8 ? extension : ".png";
-}
-
-function safeName(value) {
-  return String(value || "image")
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80) || "image";
-}
+const assetDir = "assets/issue-assets";
 
 function collectImageUrls(markdown) {
   const urls = new Set();
@@ -75,52 +19,101 @@ function collectImageUrls(markdown) {
     urls.add(match[1]);
   }
 
-  return [...urls];
+  return [...urls].filter((url) => !/^(\.\/)?(data|assets)\/issue-assets\//i.test(String(url).trim()));
 }
 
-function downloadImage(url, targetPath) {
-  execFileSync("curl", [
-    "-fL",
-    "-sS",
-    "--header",
-    `PRIVATE-TOKEN: ${token}`,
-    "--output",
-    targetPath,
-    url
-  ], { stdio: "inherit" });
+function projectBase(issue) {
+  return String(issue.web_url || "").split("/-/issues/")[0].replace(/\/$/, "");
 }
 
-let downloadedCount = 0;
+function gitlabBaseUrlFromIssue(issue) {
+  try {
+    return new URL(issue.web_url).origin;
+  } catch (_error) {
+    return "";
+  }
+}
+
+function candidateUrls(originalUrl, issue) {
+  const raw = String(originalUrl || "").trim();
+  if (!raw || /^(data:|blob:|mailto:|#)/i.test(raw)) {
+    return [];
+  }
+  if (raw.startsWith("//")) {
+    return [`https:${raw}`];
+  }
+
+  const base = projectBase(issue);
+  const gitlabBase = gitlabBaseUrlFromIssue(issue);
+  const candidates = [];
+  const add = (value) => {
+    if (value && !candidates.includes(value)) {
+      candidates.push(value);
+    }
+  };
+
+  if (/^https?:\/\//i.test(raw)) {
+    add(raw);
+    const uploadsIndex = raw.indexOf("/uploads/");
+    if (uploadsIndex !== -1 && gitlabBase) {
+      add(`${gitlabBase}/-/project/${issue.project_id}${raw.slice(uploadsIndex)}`);
+    }
+    return candidates;
+  }
+
+  if (raw.startsWith("/uploads/")) {
+    add(`${base}${raw}`);
+    if (gitlabBase) {
+      add(`${gitlabBase}/-/project/${issue.project_id}${raw}`);
+    }
+    return candidates;
+  }
+
+  if (raw.startsWith("uploads/")) {
+    add(`${base}/${raw}`);
+    if (gitlabBase) {
+      add(`${gitlabBase}/-/project/${issue.project_id}/${raw}`);
+    }
+    return candidates;
+  }
+
+  try {
+    add(new URL(raw, `${base}/`).toString());
+  } catch (_error) {
+    // Ignore unsupported relative URL.
+  }
+  return candidates;
+}
+
+function extensionFromUrl(url) {
+  try {
+    const extension = path.extname(new URL(url).pathname).toLowerCase();
+    return extension && extension.length <= 8 ? extension : ".png";
+  } catch (_error) {
+    return ".png";
+  }
+}
+
+function assetPathFor(originalUrl, issue) {
+  const candidates = candidateUrls(originalUrl, issue);
+  const canonical = candidates[0] || `${issue.iid || issue.id || "issue"}-${originalUrl}`;
+  const hash = crypto.createHash("sha1").update(canonical).digest("hex").slice(0, 16);
+  return `${assetDir}/issue-${issue.iid || issue.id || "issue"}-${hash}${extensionFromUrl(canonical)}`;
+}
+
+let rewrittenCount = 0;
 
 for (const issue of issues) {
   let description = String(issue.description || "");
-  const imageUrls = collectImageUrls(description);
-
-  for (const originalUrl of imageUrls) {
-    const absoluteUrl = normalizeUrl(originalUrl, issue);
-    if (!absoluteUrl) {
-      continue;
-    }
-
-    const issueId = issue.iid || issue.id || "issue";
-    const urlHash = Buffer.from(absoluteUrl).toString("base64url").slice(0, 12);
-    const assetName = `${safeName(`issue-${issueId}`)}-${urlHash}${extensionFromUrl(absoluteUrl)}`;
-    const targetPath = path.join(outputDir, assetName);
-    const publicPath = `data/issue-assets/${assetName}`;
-
-    try {
-      if (!fs.existsSync(targetPath)) {
-        downloadImage(absoluteUrl, targetPath);
-        downloadedCount += 1;
-      }
-      description = description.split(originalUrl).join(publicPath);
-    } catch (_error) {
-      console.error(`Failed to download issue image: ${absoluteUrl}`);
+  for (const originalUrl of collectImageUrls(description)) {
+    const assetPath = assetPathFor(originalUrl, issue);
+    if (fs.existsSync(assetPath)) {
+      description = description.split(originalUrl).join(assetPath);
+      rewrittenCount += 1;
     }
   }
-
   issue.description = description;
 }
 
 fs.writeFileSync(issuesPath, `${JSON.stringify(issues, null, 2)}\n`);
-console.log(`Rewrote issue image assets. Downloaded ${downloadedCount} file(s).`);
+console.log(`Rewrote ${rewrittenCount} issue image reference(s) to repo assets.`);

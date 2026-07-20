@@ -89,7 +89,7 @@ mv "$tmp_output" "$issues_output"
 echo "Wrote $issues_output"
 
 if command -v node >/dev/null 2>&1; then
-  node scripts/rewrite-issue-assets.js "$issues_output" "public/data/issue-assets"
+  node scripts/rewrite-issue-assets.js "$issues_output"
 else
   echo "node is not available; issue upload images will keep original GitLab URLs."
 fi

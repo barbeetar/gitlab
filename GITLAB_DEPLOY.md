@@ -18,6 +18,8 @@
 |   |-- build-search-index.sh
 |   |-- build-issues-index.sh
 |   |-- commit-entry-from-ci.sh
+|   |-- sync-issue-assets.js
+|   |-- rewrite-issue-assets.js
 |   `-- update-search-index-from-ci.sh
 `-- entries
     |-- example.md
@@ -142,11 +144,11 @@ GitLab Base URL: https://gitlab.com
 GitLab issue template
 -> 使用者在 GitLab Issues 新增 issue 並套用 template
 -> issue description 內可直接貼圖片
+-> sync_issue_assets job 下載圖片並 commit 到 assets/issue-assets/
 -> pages job 執行 scripts/build-issues-index.sh
 -> Runner 使用 GITLAB_ISSUES_TOKEN 讀 GitLab Issues API
 -> 產生 public/data/issues.json
--> 下載 issue 圖片到 public/data/issue-assets/
--> 改寫 issue description 圖片連結
+-> 改寫 issue description 圖片連結到 assets/issue-assets/
 -> 前端讀取 data/issues.json
 -> issue description 以 Markdown 文件樣式顯示
 ```
@@ -155,10 +157,10 @@ GitLab issue template
 
 - 前端不保存 Issues API token，也不會碰到 CORS。
 - Private issues 會被轉成 `data/issues.json` 放進 Pages 部署產物。
-- Issue 圖片會被下載到 `data/issue-assets/` 放進 Pages 部署產物。
+- Issue 圖片會被下載並 commit 到 repo 的 `assets/issue-assets/`。
 - 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容與圖片會被能打開 Pages 的人讀到。
 - 沒有設定 `GITLAB_ISSUES_TOKEN` 時，CI 會產生空的 `data/issues.json`。
-- 如果圖片下載失敗，請查看 Pages job log 是否有 `Failed to download issue image`。
+- 如果圖片下載失敗，請查看 `sync_issue_assets` job log 是否有 `Failed to download issue image`。
 
 ## 寫入流程
 
