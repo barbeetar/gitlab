@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=20260712-5">
+  <link rel="stylesheet" href="style.css?v=20260720-issues-1">
 </head>
 <body>
   <div class="page-shell">
@@ -38,6 +38,13 @@
 
         <div id="search-panel-body">
           <form id="search-form" class="search-form">
+            <label>
+              資料來源
+              <select name="source" id="search-source">
+                <option value="markdown" selected>Markdown Repo</option>
+                <option value="issues">GitLab Issues</option>
+              </select>
+            </label>
             <label>
               關鍵字
               <input type="search" name="keyword" placeholder="搜尋標題、單位、症狀、原因、解法">
@@ -185,7 +192,7 @@
           <h2>GitLab Pipeline 設定</h2>
         </div>
         <p class="import-text">
-          這裡只填 Pipeline Trigger Token；真正可寫 repo 的 token 請放在 GitLab CI/CD Variables。
+          Markdown 寫入使用 Pipeline Trigger Token；GitLab Issues 查詢可讀公開 issue，private project 則需填 Issue 讀取 Token。
         </p>
         <form id="api-form" class="entry-form api-form">
           <label>
@@ -207,6 +214,22 @@
           <label>
             GitLab Base URL
             <input type="url" name="gitlabBaseUrl" value="https://gitlab.com" placeholder="只填 GitLab 主站根網址，不要填 Pages 或 project URL">
+          </label>
+          <label>
+            Issue 讀取 Token
+            <input type="password" name="issueToken" placeholder="選填；private project 才需要，重新開頁後需重填">
+          </label>
+          <label>
+            Issue 狀態
+            <select name="issueState">
+              <option value="all" selected>全部</option>
+              <option value="opened">Opened</option>
+              <option value="closed">Closed</option>
+            </select>
+          </label>
+          <label>
+            Issue Labels
+            <input type="text" name="issueLabels" placeholder="選填，例如：troubleshooting,ERP">
           </label>
           <div class="form-actions">
             <button type="button" id="save-api-config" class="ghost">儲存 GitLab 設定</button>
@@ -240,6 +263,6 @@
     </article>
   </template>
 
-  <script src="app.js?v=20260712-5"></script>
+  <script src="app.js?v=20260720-issues-1"></script>
 </body>
 </html>

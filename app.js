@@ -10,6 +10,7 @@ const copyButton = document.getElementById("copy-markdown");
 const downloadButton = document.getElementById("download-markdown");
 const saveToRepoButton = document.getElementById("save-to-repo");
 const searchForm = document.getElementById("search-form");
+const searchSourceSelect = document.getElementById("search-source");
 const resultsContainer = document.getElementById("search-results");
 const entryCount = document.getElementById("entry-count");
 const queryButton = document.getElementById("query-entries");
@@ -173,6 +174,14 @@ function renderMarkdownBlock(text) {
 
   while (index < lines.length) {
     if (!lines[index].trim()) {
+      index += 1;
+      continue;
+    }
+
+    const headingMatch = lines[index].match(/^\s{0,3}(#{1,4})\s+(.+)$/);
+    if (headingMatch) {
+      const level = Math.min(headingMatch[1].length + 1, 4);
+      blocks.push(`<h${level}>${renderInlineMarkdown(headingMatch[2].trim())}</h${level}>`);
       index += 1;
       continue;
     }
@@ -364,6 +373,24 @@ async function hydrateIncompleteIndexedEntries(entries) {
 }
 
 function renderMarkdownArticle(entry) {
+  if (entry.issueIid) {
+    const tagsHtml = entry.tags.length
+      ? `<p><strong>Labels:</strong> ${entry.tags.map((tag) => `<code>${escapeHtml(tag)}</code>`).join(" ")}</p>`
+      : "";
+    const issueLinkHtml = entry.path
+      ? `<p><strong>Issue:</strong> <a href="${escapeHtml(entry.path)}" target="_blank" rel="noreferrer">${escapeHtml(entry.sourceName || entry.path)}</a></p>`
+      : "";
+    return `
+      <h1>${escapeHtml(entry.title || "未命名 Issue")}</h1>
+      <p><strong>建立日期:</strong> ${escapeHtml(entry.date || "未填日期")}</p>
+      ${entry.unit ? `<p><strong>提出單位:</strong> ${escapeHtml(entry.unit)}</p>` : ""}
+      ${tagsHtml}
+      ${issueLinkHtml}
+      <hr>
+      ${renderMarkdownBlock(entry.raw || entry.symptom || "未填寫")}
+    `;
+  }
+
   const tagsHtml = entry.tags.length
     ? `<p><strong>Tags:</strong> ${entry.tags.map((tag) => `<code>${escapeHtml(tag)}</code>`).join(" ")}</p>`
     : "";
@@ -672,6 +699,9 @@ function getApiConfig() {
   return {
     gitlabProjectId: String(data.gitlabProjectId || "").trim(),
     gitlabToken: String(data.gitlabToken || "").trim(),
+    issueToken: String(data.issueToken || "").trim(),
+    issueState: String(data.issueState || "all").trim(),
+    issueLabels: String(data.issueLabels || "").trim(),
     gitlabBaseUrl: normalizeGitLabBaseUrl(data.gitlabBaseUrl || "https://gitlab.com"),
     entriesPath: normalizeRelativePath(data.entriesPath || "entries"),
     branch: String(data.branch || "").trim()
@@ -688,18 +718,121 @@ function normalizeGitLabBaseUrl(value) {
   }
 }
 
+function getIssueProjectWebUrl(issue, config) {
+  if (issue.web_url && issue.web_url.includes("/-/issues/")) {
+    return issue.web_url.split("/-/issues/")[0];
+  }
+  return `${config.gitlabBaseUrl}/${String(config.gitlabProjectId || "").replace(/^\/+|\/+$/g, "")}`;
+}
+
+function normalizeIssueMarkdownUrls(markdown, issue, config) {
+  const projectWebUrl = getIssueProjectWebUrl(issue, config).replace(/\/$/, "");
+  const gitlabBaseUrl = config.gitlabBaseUrl.replace(/\/$/, "");
+  return String(markdown || "")
+    .replace(/(!?\[[^\]]*\]\()\/uploads\//g, `$1${projectWebUrl}/uploads/`)
+    .replace(/(!?\[[^\]]*\]\()uploads\//g, `$1${projectWebUrl}/uploads/`)
+    .replace(/(!?\[[^\]]*\]\()\/(?!\/)/g, `$1${gitlabBaseUrl}/`);
+}
+
+function extractUnitFromIssue(issue) {
+  const labels = Array.isArray(issue.labels) ? issue.labels : [];
+  const unitLabel = labels.find((label) => /^(unit|單位|提出單位)::/i.test(label));
+  return unitLabel ? unitLabel.split("::").slice(1).join("::").trim() : "";
+}
+
+function buildEntryFromGitLabIssue(issue, config) {
+  const labels = Array.isArray(issue.labels) ? issue.labels : [];
+  const description = normalizeIssueMarkdownUrls(issue.description || "", issue, config);
+  return {
+    path: issue.web_url || "",
+    apiPath: "",
+    repoConfig: null,
+    raw: description,
+    loaded: true,
+    sourceName: `Issue #${issue.iid}`,
+    title: issue.title || `Issue #${issue.iid}`,
+    date: String(issue.created_at || issue.updated_at || "").slice(0, 10),
+    unit: extractUnitFromIssue(issue),
+    screenshot: issue.web_url || "",
+    screenshotImage: "",
+    tags: labels,
+    symptom: description,
+    cause: "",
+    solution: "",
+    issueState: issue.state || "",
+    issueIid: issue.iid
+  };
+}
+
+async function loadGitLabIssues() {
+  const config = getApiConfig();
+  if (!config.gitlabProjectId) {
+    throw new Error("請先在 GitLab Pipeline 設定填入 GitLab Project ID。");
+  }
+
+  const params = new URLSearchParams({
+    per_page: "100",
+    scope: "all",
+    order_by: "updated_at",
+    sort: "desc"
+  });
+  if (config.issueState && config.issueState !== "all") {
+    params.set("state", config.issueState);
+  }
+  if (config.issueLabels) {
+    params.set("labels", config.issueLabels);
+  }
+
+  const headers = { Accept: "application/json" };
+  if (config.issueToken) {
+    headers["PRIVATE-TOKEN"] = config.issueToken;
+  }
+
+  const issues = [];
+  let page = 1;
+  while (page <= 10) {
+    params.set("page", String(page));
+    const url = `${config.gitlabBaseUrl}/api/v4/projects/${encodeURIComponent(config.gitlabProjectId)}/issues?${params}`;
+    setLoadingStatus(`正在讀取 GitLab Issues：第 ${page} 頁`, Math.min(85, 15 + page * 8));
+    const response = await fetch(url, { headers, cache: "no-store" });
+    if (!response.ok) {
+      const message = response.status === 401 || response.status === 403
+        ? "GitLab Issues 讀取失敗：token 無效或權限不足。"
+        : response.status === 404
+          ? "GitLab Issues 讀取失敗：找不到 project，或 private project 需要 Issue 讀取 Token。"
+          : `GitLab Issues API error ${response.status}`;
+      throw new Error(message);
+    }
+
+    const pageItems = await response.json();
+    issues.push(...pageItems);
+    const nextPage = response.headers.get("x-next-page");
+    if (!nextPage) {
+      break;
+    }
+    page = Number(nextPage);
+  }
+
+  return sortEntries(issues.map((issue) => buildEntryFromGitLabIssue(issue, config)));
+}
+
 function saveApiConfig() {
   const config = getApiConfig();
   localStorage.setItem(apiConfigStorageKey, JSON.stringify({
     gitlabProjectId: config.gitlabProjectId,
     gitlabBaseUrl: config.gitlabBaseUrl,
     entriesPath: config.entriesPath,
-    branch: config.branch
+    branch: config.branch,
+    issueState: config.issueState,
+    issueLabels: config.issueLabels
   }));
   const tokenNote = config.gitlabToken
     ? "目前頁面已有 Pipeline Trigger Token，可觸發寫入 pipeline；重新開頁後需重新貼上。"
     : "Pipeline Trigger Token 欄位目前是空的，無法觸發寫入 pipeline。";
-  setApiStatus(`已儲存 Project ID、Markdown 目錄、Branch 與 Base URL。${tokenNote}`);
+  const issueTokenNote = config.issueToken
+    ? "Issue 讀取 Token 已套用於本次頁面；重新開頁後需重新貼上。"
+    : "Issue 讀取 Token 未填，僅可讀公開 Issues 或同源允許的資料。";
+  setApiStatus(`已儲存 Project ID、Markdown 目錄、Branch、Base URL 與 Issues 篩選。${tokenNote} ${issueTokenNote}`);
   allEntries = [];
   filteredEntries = [];
   hasLoadedEntries = false;
@@ -721,11 +854,17 @@ function restoreApiConfig() {
     const baseUrlField = apiForm.elements.namedItem("gitlabBaseUrl");
     const entriesPathField = apiForm.elements.namedItem("entriesPath");
     const branchField = apiForm.elements.namedItem("branch");
+    const issueTokenField = apiForm.elements.namedItem("issueToken");
+    const issueStateField = apiForm.elements.namedItem("issueState");
+    const issueLabelsField = apiForm.elements.namedItem("issueLabels");
     if (projectIdField) {
       projectIdField.value = config.gitlabProjectId || "";
     }
     if (tokenField) {
       tokenField.value = "";
+    }
+    if (issueTokenField) {
+      issueTokenField.value = "";
     }
     if (baseUrlField) {
       baseUrlField.value = config.gitlabBaseUrl || "https://gitlab.com";
@@ -736,7 +875,13 @@ function restoreApiConfig() {
     if (branchField) {
       branchField.value = config.branch || "";
     }
-    setApiStatus("已載入 Project ID、Markdown 目錄、Branch 與 Base URL。Pipeline Trigger Token 不會長期儲存。");
+    if (issueStateField) {
+      issueStateField.value = config.issueState || "all";
+    }
+    if (issueLabelsField) {
+      issueLabelsField.value = config.issueLabels || "";
+    }
+    setApiStatus("已載入 Project ID、Markdown 目錄、Branch、Base URL 與 Issues 篩選。Pipeline Trigger Token / Issue 讀取 Token 不會長期儲存。");
   } catch (error) {
     console.error(error);
   }
@@ -996,7 +1141,7 @@ function renderResults(entries) {
       fileLink.style.pointerEvents = "none";
     } else {
       fileLink.href = entry.path;
-      fileLink.textContent = "查看 Markdown";
+      fileLink.textContent = entry.issueIid ? "查看 Issue" : "查看 Markdown";
     }
 
     detail.classList.add("markdown-body");
@@ -1016,7 +1161,9 @@ function renderResults(entries) {
     openButton.addEventListener("click", async () => {
       renderMainPreview(entry, {
         previewLabel: "查詢文件預覽",
-        filenameLabel: entry.path ? `來源：${entry.path}` : `來源：${entry.sourceName || entry.title || "Markdown 紀錄"}`,
+        filenameLabel: entry.issueIid
+          ? `來源：GitLab Issue #${entry.issueIid}`
+          : entry.path ? `來源：${entry.path}` : `來源：${entry.sourceName || entry.title || "Markdown 紀錄"}`,
         rawMarkdown: buildRawMarkdownFromEntry(entry)
       });
     });
@@ -1225,7 +1372,33 @@ async function loadEntries() {
   pageStatus.textContent = "第 0 / 0 頁";
   prevPageButton.disabled = true;
   nextPageButton.disabled = true;
-  setLoadingStatus("正在準備讀取 Markdown...", 5);
+  setLoadingStatus("正在準備讀取資料...", 5);
+
+  const source = searchSourceSelect?.value || "markdown";
+  if (source === "issues") {
+    try {
+      setRepoStatus("GitLab Issues 模式：正在讀取 project issues。");
+      setLoadingStatus("正在連線 GitLab Issues API...", 10);
+      allEntries = await loadGitLabIssues();
+      hasLoadedEntries = true;
+      updateUnitOptions();
+      filterEntries();
+      setRepoStatus(`已從 GitLab Issues 載入 ${allEntries.length} 筆資料。`);
+      hideLoadingStatus();
+    } catch (error) {
+      allEntries = [];
+      filteredEntries = [];
+      hasLoadedEntries = false;
+      updateUnitOptions();
+      entryCount.textContent = "無法載入 GitLab Issues";
+      resultsContainer.innerHTML = `<div class="result-card">${escapeHtml(error.message || "GitLab Issues 讀取失敗。")}</div>`;
+      console.error(error);
+      hideLoadingStatus();
+    }
+    setSearchLoadingState(false);
+    return;
+  }
+
   try {
     setRepoStatus(`GitLab Pages 模式：正在讀取 ${localSearchIndexPath}。`);
     setLoadingStatus(`正在讀取 ${localSearchIndexPath}...`, 20);
@@ -1368,6 +1541,14 @@ pageSizeSelect.addEventListener("change", () => {
   }
   currentPage = 1;
   renderResults(filteredEntries);
+});
+searchSourceSelect.addEventListener("change", () => {
+  allEntries = [];
+  filteredEntries = [];
+  hasLoadedEntries = false;
+  hasAttemptedSearch = false;
+  updateUnitOptions();
+  showInitialSearchState();
 });
 sortResultsSelect.addEventListener("change", updateResultSort);
 toggleSearchPanelButton.addEventListener("click", toggleSearchPanel);

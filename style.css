@@ -133,7 +133,7 @@ body {
 }
 
 .api-form {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   align-items: end;
   margin-top: 18px;
 }
