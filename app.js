@@ -743,15 +743,25 @@ function getIssueProjectWebUrl(issue, config) {
   return `${config.gitlabBaseUrl}/${String(config.gitlabProjectId || "").replace(/^\/+|\/+$/g, "")}`;
 }
 
+function getIssueUploadsBaseUrl(issue, config) {
+  const projectId = String(issue.project_id || config.gitlabProjectId || "").trim();
+  if (/^\d+$/.test(projectId)) {
+    return `${config.gitlabBaseUrl.replace(/\/$/, "")}/-/project/${projectId}/uploads/`;
+  }
+
+  return `${getIssueProjectWebUrl(issue, config).replace(/\/$/, "")}/uploads/`;
+}
+
 function normalizeIssueMarkdownUrls(markdown, issue, config) {
   const projectWebUrl = getIssueProjectWebUrl(issue, config).replace(/\/$/, "");
+  const uploadsBaseUrl = getIssueUploadsBaseUrl(issue, config);
   const gitlabBaseUrl = config.gitlabBaseUrl.replace(/\/$/, "");
   return String(markdown || "")
-    .replace(/(!?\[[^\]]*\]\()\s*\/uploads\//g, `$1${projectWebUrl}/uploads/`)
-    .replace(/(!?\[[^\]]*\]\()\s*uploads\//g, `$1${projectWebUrl}/uploads/`)
+    .replace(/(!?\[[^\]]*\]\()\s*\/uploads\//g, `$1${uploadsBaseUrl}`)
+    .replace(/(!?\[[^\]]*\]\()\s*uploads\//g, `$1${uploadsBaseUrl}`)
     .replace(/(!?\[[^\]]*\]\()\s*\/(?!\/)/g, `$1${gitlabBaseUrl}/`)
-    .replace(/(<img\b[^>]*\bsrc=["'])\/uploads\//gi, `$1${projectWebUrl}/uploads/`)
-    .replace(/(<img\b[^>]*\bsrc=["'])uploads\//gi, `$1${projectWebUrl}/uploads/`)
+    .replace(/(<img\b[^>]*\bsrc=["'])\/uploads\//gi, `$1${uploadsBaseUrl}`)
+    .replace(/(<img\b[^>]*\bsrc=["'])uploads\//gi, `$1${uploadsBaseUrl}`)
     .replace(/(<img\b[^>]*\bsrc=["'])\/(?!\/)/gi, `$1${gitlabBaseUrl}/`);
 }
 

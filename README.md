@@ -192,6 +192,7 @@ https://gitlab.example.com
 - 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容會透過 Pages 被能開網站的人讀到。
 - 可用 CI/CD Variables `ISSUE_STATE`、`ISSUE_LABELS`、`ISSUE_MAX_PAGES` 控制 CI 產生的 Issues 範圍。
 - GitLab issue 內貼上的圖片如果是 `/uploads/...` 相對路徑，網站會嘗試轉成目前 project 的 GitLab URL 顯示。
+- GitLab 新版 upload 連結會優先轉成 `/-/project/<project_id>/uploads/...`，避免 `<group>/<project>/uploads/...` 在部分 GitLab 版本出現 404。
 - 如果 project/uploads 是 private，使用者可能需要同時登入 GitLab 才能看到 issue 圖片；否則文字會出現但圖片可能被權限擋住。
 
 ### 重新讀取資料
