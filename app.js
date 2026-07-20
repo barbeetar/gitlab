@@ -147,7 +147,13 @@ function renderEscapedInlineMarkdown(escapedText) {
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, src) => {
       const pendingImage = pendingImages.find((image) => image.path === src);
       const safeSrc = escapeHtml(pendingImage ? pendingImage.previewUrl : src);
-      return `<img src="${safeSrc}" alt="${escapeHtml(alt)}">`;
+      const safeAlt = escapeHtml(alt || "image");
+      return `
+        <figure class="markdown-image">
+          <img src="${safeSrc}" alt="${safeAlt}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('figure').classList.add('image-load-failed')">
+          <figcaption><a href="${safeSrc}" target="_blank" rel="noreferrer">開啟圖片</a><span>圖片無法載入，請確認 GitLab 登入狀態或圖片權限。</span></figcaption>
+        </figure>
+      `;
     })
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => {
       const safeHref = escapeHtml(href);

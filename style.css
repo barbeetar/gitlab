@@ -564,6 +564,28 @@ button:disabled {
   border-radius: 12px;
 }
 
+.markdown-image {
+  margin: 0 0 18px;
+}
+
+.markdown-image img {
+  margin-bottom: 8px;
+}
+
+.markdown-image figcaption {
+  font-size: 0.9rem;
+  color: #57606a;
+}
+
+.markdown-image figcaption span {
+  display: none;
+  margin-left: 10px;
+}
+
+.markdown-image.image-load-failed figcaption span {
+  display: inline;
+}
+
 .markdown-body table {
   display: block;
   width: 100%;
