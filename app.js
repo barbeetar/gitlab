@@ -130,7 +130,20 @@ function escapeHtml(value) {
 }
 
 function renderInlineMarkdown(text) {
-  return escapeHtml(text)
+  return renderEscapedInlineMarkdown(escapeHtml(text));
+}
+
+function renderTrustedInlineMarkdown(text) {
+  return renderEscapedInlineMarkdown(escapeHtml(text)
+    .replace(/&lt;img\s+([^&]*?)src=&quot;([^&]+)&quot;([^&]*?)&gt;/gi, (_match, before, src, after) => {
+      const altMatch = `${before} ${after}`.match(/alt=&quot;([^&]*)&quot;/i);
+      const alt = altMatch ? altMatch[1] : "GitLab issue image";
+      return `![${alt}](${src})`;
+    }));
+}
+
+function renderEscapedInlineMarkdown(escapedText) {
+  return escapedText
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, src) => {
       const pendingImage = pendingImages.find((image) => image.path === src);
       const safeSrc = escapeHtml(pendingImage ? pendingImage.previewUrl : src);
@@ -168,7 +181,8 @@ function renderTable(lines) {
   `;
 }
 
-function renderMarkdownBlock(text) {
+function renderMarkdownBlock(text, options = {}) {
+  const inlineRenderer = options.trustedHtmlImages ? renderTrustedInlineMarkdown : renderInlineMarkdown;
   const lines = String(text || "").replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let index = 0;
@@ -182,7 +196,7 @@ function renderMarkdownBlock(text) {
     const headingMatch = lines[index].match(/^\s{0,3}(#{1,4})\s+(.+)$/);
     if (headingMatch) {
       const level = Math.min(headingMatch[1].length + 1, 4);
-      blocks.push(`<h${level}>${renderInlineMarkdown(headingMatch[2].trim())}</h${level}>`);
+      blocks.push(`<h${level}>${inlineRenderer(headingMatch[2].trim())}</h${level}>`);
       index += 1;
       continue;
     }
@@ -204,7 +218,7 @@ function renderMarkdownBlock(text) {
         items.push(lines[index].replace(/^\s*[-*]\s+/, ""));
         index += 1;
       }
-      blocks.push(`<ul>${items.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+      blocks.push(`<ul>${items.map((item) => `<li>${inlineRenderer(item)}</li>`).join("")}</ul>`);
       continue;
     }
 
@@ -213,7 +227,7 @@ function renderMarkdownBlock(text) {
       paragraph.push(lines[index]);
       index += 1;
     }
-    blocks.push(`<p>${renderInlineMarkdown(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
+    blocks.push(`<p>${inlineRenderer(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
   }
 
   return blocks.join("");
@@ -388,7 +402,7 @@ function renderMarkdownArticle(entry) {
       ${tagsHtml}
       ${issueLinkHtml}
       <hr>
-      ${renderMarkdownBlock(entry.raw || entry.symptom || "未填寫")}
+      ${renderMarkdownBlock(entry.raw || entry.symptom || "未填寫", { trustedHtmlImages: true })}
     `;
   }
 
@@ -727,9 +741,12 @@ function normalizeIssueMarkdownUrls(markdown, issue, config) {
   const projectWebUrl = getIssueProjectWebUrl(issue, config).replace(/\/$/, "");
   const gitlabBaseUrl = config.gitlabBaseUrl.replace(/\/$/, "");
   return String(markdown || "")
-    .replace(/(!?\[[^\]]*\]\()\/uploads\//g, `$1${projectWebUrl}/uploads/`)
-    .replace(/(!?\[[^\]]*\]\()uploads\//g, `$1${projectWebUrl}/uploads/`)
-    .replace(/(!?\[[^\]]*\]\()\/(?!\/)/g, `$1${gitlabBaseUrl}/`);
+    .replace(/(!?\[[^\]]*\]\()\s*\/uploads\//g, `$1${projectWebUrl}/uploads/`)
+    .replace(/(!?\[[^\]]*\]\()\s*uploads\//g, `$1${projectWebUrl}/uploads/`)
+    .replace(/(!?\[[^\]]*\]\()\s*\/(?!\/)/g, `$1${gitlabBaseUrl}/`)
+    .replace(/(<img\b[^>]*\bsrc=["'])\/uploads\//gi, `$1${projectWebUrl}/uploads/`)
+    .replace(/(<img\b[^>]*\bsrc=["'])uploads\//gi, `$1${projectWebUrl}/uploads/`)
+    .replace(/(<img\b[^>]*\bsrc=["'])\/(?!\/)/gi, `$1${gitlabBaseUrl}/`);
 }
 
 function extractUnitFromIssue(issue) {

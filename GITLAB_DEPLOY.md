@@ -155,6 +155,7 @@ GitLab issue template
 - Private issues 會被轉成 `data/issues.json` 放進 Pages 部署產物。
 - 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容會被能打開 Pages 的人讀到。
 - 沒有設定 `GITLAB_ISSUES_TOKEN` 時，CI 會產生空的 `data/issues.json`。
+- 如果 issue 圖片來自 private GitLab uploads，使用者可能需要同時登入 GitLab 才能載入圖片。
 
 ## 寫入流程
 
