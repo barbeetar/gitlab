@@ -8,6 +8,7 @@
 - 即時預覽 Markdown，顯示成接近 GitLab / GitHub 的文件樣式
 - 支援粗體、表格、清單、貼上圖片與截圖
 - 查詢既有 Markdown 紀錄，並可用分頁控制每頁筆數
+- 可切換查詢 GitLab Issues，將 issue description 當作 Markdown 文件顯示
 - 查詢結果可依日期、標題、提出單位排序
 - 使用 Pipeline Trigger Token 觸發 GitLab CI
 - 真正可寫 repo 的 token 放在 GitLab CI/CD Variables
@@ -24,7 +25,8 @@
 |-- .gitlab-ci.yml
 |-- scripts
 |   |-- build-search-index.sh
-|   `-- commit-entry-from-ci.sh
+|   |-- commit-entry-from-ci.sh
+|   `-- update-search-index-from-ci.sh
 `-- entries
     |-- example.md
     |-- index.json
@@ -38,7 +40,7 @@
 1. 建立一個 GitLab project。
 2. 把這個資料夾內的檔案上傳到 repo 根目錄。
 3. 確認 repo 根目錄有 `.gitlab-ci.yml`。
-4. 確認 repo 內有 `scripts/build-search-index.sh` 和 `scripts/commit-entry-from-ci.sh`。
+4. 確認 repo 內有 `scripts/build-search-index.sh`、`scripts/commit-entry-from-ci.sh` 和 `scripts/update-search-index-from-ci.sh`。
 5. 確認 repo 內有 `entries/` 資料夾。
 6. 到 `Build > Pipelines` 查看 pipeline 是否成功。
 7. 到 `Deploy > Pages` 查看 GitLab Pages 網址。
@@ -50,8 +52,12 @@
 CI 需要 runner 環境有這些常見指令：
 
 ```text
-sh, awk, sed, basename, curl, base64
+sh, awk, sed, basename, curl, base64, cmp, cp
 ```
+
+`update_search_index` 和 `commit_entry` 都會透過 GitLab API 寫回 repo，所以需要 `curl`。
+
+如果你使用 Alpine 且環境沒有 `curl`，可以在 `.gitlab-ci.yml` 的 job 加 `before_script` 安裝，例如 `apk add --no-cache curl`。
 
 建立資料時貼上的圖片會和 Markdown 一起由 CI commit 到 repo。
 
@@ -99,6 +105,9 @@ Pipeline Trigger Token: Pipeline trigger token
 Markdown 目錄: entries
 Branch: 你的 Pages 部署分支，通常是 main
 GitLab Base URL: https://gitlab.com
+Issue 讀取 Token: 選填，private project 才需要；不會長期儲存
+Issue 狀態: all / opened / closed
+Issue Labels: 選填，例如 troubleshooting,ERP
 ```
 
 如果你用的是 self-managed GitLab，`GitLab Base URL` 要改成公司 GitLab 的網址，例如：
@@ -122,12 +131,37 @@ https://gitlab.example.com
 ### 查詢資料
 
 1. 在查詢區輸入關鍵字、提出單位或日期範圍。
-2. 按 `查詢`。
-3. 結果會從 `entries/search-index.json` 載入。
-4. 可用每頁筆數控制結果數量。
-5. 可用排序選單切換日期、標題或提出單位排序。
-6. 點 `展開文件` 可直接查看文件預覽樣式。
-7. 點 `在預覽區開啟` 可把該筆資料放到主要預覽區。
+2. 選擇資料來源：`Markdown Repo` 或 `GitLab Issues`。
+3. 按 `查詢`。
+4. `Markdown Repo` 會從 `entries/search-index.json` 載入。
+5. `GitLab Issues` 會從 GitLab Issues API 載入 issue title、description、labels、created_at。
+6. 可用每頁筆數控制結果數量。
+7. 可用排序選單切換日期、標題或提出單位排序。
+8. 點 `展開文件` 可直接查看文件預覽樣式。
+9. 點 `在預覽區開啟` 可把該筆資料放到主要預覽區。
+
+### GitLab Issues 模式
+
+如果你已經在 GitLab Issues 使用 issue template 建立 troubleshooting 文件，可以直接讓網站讀取 Issues：
+
+1. 在 GitLab 建立 issue template，內容用 Markdown 撰寫。
+2. 使用者到 GitLab Issues 新增 issue 並套用 template。
+3. 如果有截圖，直接貼在 GitLab issue description 裡。
+4. 回到網站，資料來源選 `GitLab Issues` 後按 `查詢`。
+
+對應關係：
+
+- Issue title 會顯示成文件標題。
+- Issue description 會顯示成 Markdown 預覽。
+- Issue labels 會顯示成 tags，也可用 `Issue Labels` 篩選。
+- 如果 label 使用 `unit::製造部`、`單位::製造部` 或 `提出單位::製造部`，網站會把它當成提出單位。
+
+注意事項：
+
+- Public project 可不填 `Issue 讀取 Token`。
+- Private project 通常需要填可讀 issue 的 token，這個 token 只存在本次瀏覽器頁面，不會存 localStorage。
+- 如果公司 GitLab API 不允許跨來源 CORS，純 GitLab Pages 前端可能無法直接讀 Issues API，這時需要後端代理或 OAuth 方案。
+- GitLab issue 內貼上的圖片如果是 `/uploads/...` 相對路徑，網站會嘗試轉成目前 project 的 GitLab URL 顯示。
 
 ### 重新讀取資料
 
@@ -137,7 +171,7 @@ https://gitlab.example.com
 - 你在 GitLab repo 手動新增或修改了 `entries/` 裡的 Markdown。
 - GitLab Pages 剛重新部署完成。
 
-不要在 pipeline 還沒完成前期待查到新資料，因為 `search-index.json` 要等 CI 重建並部署後才會更新。
+不要在 pipeline 還沒完成前期待查到新資料，因為 `search-index.json` 要等 CI 更新並部署後才會生效。
 
 ## 手動新增資料
 
@@ -148,7 +182,7 @@ https://gitlab.example.com
 3. 到 GitLab repo 的 `entries/` 新增 `.md` 檔案。
 4. Commit 到部署分支。
 5. GitLab CI 會執行 `scripts/build-search-index.sh`。
-6. `entries/search-index.json` 會在 Pages 部署產物中被重建。
+6. `update_search_index` job 會把 `entries/search-index.json` commit 回 repo；Pages 部署時也會再次重建確認。
 7. Pipeline 成功、Pages 更新後，網站就能查到資料。
 
 ## Markdown 格式

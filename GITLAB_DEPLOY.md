@@ -16,7 +16,8 @@
 |-- .gitlab-ci.yml
 |-- scripts
 |   |-- build-search-index.sh
-|   `-- commit-entry-from-ci.sh
+|   |-- commit-entry-from-ci.sh
+|   `-- update-search-index-from-ci.sh
 `-- entries
     |-- example.md
     `-- search-index.json
@@ -36,10 +37,14 @@
 CI 需要 runner 環境有：
 
 ```text
-sh, awk, sed, basename, curl, base64
+sh, awk, sed, basename, curl, base64, cmp, cp
 ```
 
-如果 runner 環境沒有 `curl`、`base64`、`awk` 或 `sed`，請改用公司允許的基礎 image，或請 runner 管理員提供內建這些工具的 runner。
+`update_search_index` 和 `commit_entry` 都會透過 GitLab API 寫回 repo，所以需要 `curl`。
+
+如果你使用 Alpine 且環境沒有 `curl`，可以在 `.gitlab-ci.yml` 的 job 加 `before_script` 安裝，例如 `apk add --no-cache curl`。
+
+如果 runner 環境缺少必要指令，請改用公司允許的基礎 image，或請 runner 管理員提供內建這些工具的 runner。
 
 如果公司 runner 需要 tag，請參考：
 
@@ -99,9 +104,31 @@ Pipeline Trigger Token: pipeline trigger token
 Markdown 目錄: entries
 Branch: main 或你的部署分支
 GitLab Base URL: https://gitlab.com
+Issue 讀取 Token: 選填，private project 才需要
+Issue 狀態: all / opened / closed
+Issue Labels: 選填，例如 troubleshooting,ERP
 ```
 
 如果是公司 self-managed GitLab，`GitLab Base URL` 改成公司 GitLab 網址。
+
+## GitLab Issues 查詢模式
+
+網站可以切換資料來源為 `GitLab Issues`，直接讀取 project issues：
+
+```text
+GitLab issue template
+-> 使用者在 GitLab Issues 新增 issue 並套用 template
+-> issue description 內可直接貼圖片
+-> 網站呼叫 GitLab Issues API
+-> issue description 以 Markdown 文件樣式顯示
+```
+
+注意：
+
+- 讀 Issues 不需要 pipeline。
+- Public project 可不填 `Issue 讀取 Token`。
+- Private project 通常需要在網站本次輸入可讀 issue 的 token；此 token 不會長期儲存。
+- 如果公司 GitLab API 不允許 CORS，GitLab Pages 前端可能無法直接讀 Issues API，需改用後端代理或 OAuth。
 
 ## 寫入流程
 
@@ -109,8 +136,10 @@ GitLab Base URL: https://gitlab.com
 網頁產生 Markdown
 -> 觸發 GitLab pipeline
 -> commit_entry job 使用 GITLAB_WRITE_TOKEN commit 到 repo
+-> commit_entry job 同步更新 entries/search-index.json
 -> push 觸發 pages job
--> build-search-index.sh 重新產生 entries/search-index.json
+-> update_search_index job 檢查 search-index.json 是否需要寫回 repo
+-> build-search-index.sh 在 Pages 部署產物中再次重建 entries/search-index.json
 -> GitLab Pages 更新
 -> 網頁偵測 search-index.json 出現新檔名
 ```
@@ -143,4 +172,4 @@ https://<namespace>.gitlab.io/<project>/
 2. 按 `下載檔案` 或 `複製內容`。
 3. 到 GitLab repo 的 `entries/` 手動新增 `.md`。
 4. Commit 到部署分支。
-5. GitLab CI 會在部署產物中重建 `search-index.json` 並部署 Pages。
+5. GitLab CI 的 `update_search_index` job 會更新 repo 內的 `entries/search-index.json`，並在部署產物中再次重建後部署 Pages。
