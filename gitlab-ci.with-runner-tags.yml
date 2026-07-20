@@ -34,7 +34,7 @@ pages:
   tags:
     - your-company-runner-tag
   before_script:
-    - apk add --no-cache curl
+    - apk add --no-cache curl nodejs
   script:
     - sh scripts/build-search-index.sh
     - mkdir -p public

@@ -24,7 +24,7 @@ update_search_index:
 pages:
   stage: deploy
   before_script:
-    - apk add --no-cache curl
+    - apk add --no-cache curl nodejs
   script:
     - sh scripts/build-search-index.sh
     - mkdir -p public

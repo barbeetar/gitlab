@@ -34,7 +34,7 @@
     `-- search-index.json
 ```
 
-`entries/search-index.json` 是 Markdown Repo 的主要查詢來源。`data/issues.json` 是 GitLab Issues 模式的查詢來源，由 GitLab CI 在 Pages 部署時產生。
+`entries/search-index.json` 是 Markdown Repo 的主要查詢來源。`data/issues.json` 是 GitLab Issues 模式的查詢來源，由 GitLab CI 在 Pages 部署時產生。Issue 內貼上的圖片會由 CI 下載到 `data/issue-assets/`，避免 private GitLab uploads 在前端顯示 404。
 
 ## 第一次部署
 
@@ -48,12 +48,12 @@
 
 如果 pipeline 成功，GitLab Pages 會發布 `public/` 內的網站檔案，包含 `index.html`、`style.css`、`app.js`、`entries/` 和 `assets/`。
 
-目前 `.gitlab-ci.yml` 使用 shell 腳本，不需要 Ruby、Node.js 或 Python，也不會拉 Docker Hub image。
+目前 `.gitlab-ci.yml` 使用 shell 腳本，Pages job 會用 Alpine 套件安裝 `nodejs` 來改寫 issue 圖片連結，不會拉 Docker Hub image。
 
 CI 需要 runner 環境有這些常見指令：
 
 ```text
-sh, awk, sed, basename, curl, base64, cmp, cp
+sh, awk, sed, basename, curl, base64, cmp, cp, node
 ```
 
 `update_search_index` 和 `commit_entry` 都會透過 GitLab API 寫回 repo，所以需要 `curl`。
@@ -189,11 +189,11 @@ https://gitlab.example.com
 
 - 前端不直接呼叫 GitLab Issues API，也不需要輸入 Issue token。
 - Private issues 由 GitLab CI 使用 `GITLAB_ISSUES_TOKEN` 讀取後產生 `public/data/issues.json`。
-- 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容會透過 Pages 被能開網站的人讀到。
+- CI 會把 issue 圖片下載到 `public/data/issue-assets/` 並改寫 description 圖片連結。
+- 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容與圖片會透過 Pages 被能開網站的人讀到。
 - 可用 CI/CD Variables `ISSUE_STATE`、`ISSUE_LABELS`、`ISSUE_MAX_PAGES` 控制 CI 產生的 Issues 範圍。
-- GitLab issue 內貼上的圖片如果是 `/uploads/...` 相對路徑，網站會嘗試轉成目前 project 的 GitLab URL 顯示。
-- GitLab 新版 upload 連結會優先轉成 `/-/project/<project_id>/uploads/...`，避免 `<group>/<project>/uploads/...` 在部分 GitLab 版本出現 404。
-- 如果 project/uploads 是 private，使用者可能需要同時登入 GitLab 才能看到 issue 圖片；否則文字會出現但圖片可能被權限擋住。
+- GitLab issue 內貼上的圖片如果是 `/uploads/...`，CI 會嘗試用 `GITLAB_ISSUES_TOKEN` 下載並改成 `data/issue-assets/...`。
+- 如果圖片仍顯示破圖，請檢查 Pages pipeline log 是否有 `Failed to download issue image`。
 
 ### 重新讀取資料
 

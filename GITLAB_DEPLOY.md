@@ -33,12 +33,12 @@
 
 ## CI 執行環境
 
-目前 `.gitlab-ci.yml` 使用 shell 腳本，不指定 Docker image，不需要 Ruby、Node.js 或 Python。
+目前 `.gitlab-ci.yml` 使用 shell 腳本，不指定 Docker image。Pages job 會用 Alpine 套件安裝 `nodejs`，用來改寫 GitLab issue 圖片連結。
 
 CI 需要 runner 環境有：
 
 ```text
-sh, awk, sed, basename, curl, base64, cmp, cp
+sh, awk, sed, basename, curl, base64, cmp, cp, node
 ```
 
 `update_search_index` 和 `commit_entry` 都會透過 GitLab API 寫回 repo，所以需要 `curl`。
@@ -145,6 +145,8 @@ GitLab issue template
 -> pages job 執行 scripts/build-issues-index.sh
 -> Runner 使用 GITLAB_ISSUES_TOKEN 讀 GitLab Issues API
 -> 產生 public/data/issues.json
+-> 下載 issue 圖片到 public/data/issue-assets/
+-> 改寫 issue description 圖片連結
 -> 前端讀取 data/issues.json
 -> issue description 以 Markdown 文件樣式顯示
 ```
@@ -153,9 +155,10 @@ GitLab issue template
 
 - 前端不保存 Issues API token，也不會碰到 CORS。
 - Private issues 會被轉成 `data/issues.json` 放進 Pages 部署產物。
-- 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容會被能打開 Pages 的人讀到。
+- Issue 圖片會被下載到 `data/issue-assets/` 放進 Pages 部署產物。
+- 請確認 GitLab Pages access control 有限制可看的人；否則 private issues 內容與圖片會被能打開 Pages 的人讀到。
 - 沒有設定 `GITLAB_ISSUES_TOKEN` 時，CI 會產生空的 `data/issues.json`。
-- 如果 issue 圖片來自 private GitLab uploads，使用者可能需要同時登入 GitLab 才能載入圖片。
+- 如果圖片下載失敗，請查看 Pages job log 是否有 `Failed to download issue image`。
 
 ## 寫入流程
 

@@ -752,6 +752,20 @@ function getIssueUploadsBaseUrl(issue, config) {
   return `${getIssueProjectWebUrl(issue, config).replace(/\/$/, "")}/uploads/`;
 }
 
+function normalizeIssueAssetPath(url, gitlabBaseUrl) {
+  const raw = String(url || "").trim();
+  if (/^(\.\/)?data\//i.test(raw)) {
+    return raw.replace(/^\.\//, "");
+  }
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("//")) {
+    return raw;
+  }
+  if (raw.startsWith("/")) {
+    return `${gitlabBaseUrl}${raw}`;
+  }
+  return raw;
+}
+
 function normalizeIssueMarkdownUrls(markdown, issue, config) {
   const projectWebUrl = getIssueProjectWebUrl(issue, config).replace(/\/$/, "");
   const uploadsBaseUrl = getIssueUploadsBaseUrl(issue, config);
@@ -759,10 +773,10 @@ function normalizeIssueMarkdownUrls(markdown, issue, config) {
   return String(markdown || "")
     .replace(/(!?\[[^\]]*\]\()\s*\/uploads\//g, `$1${uploadsBaseUrl}`)
     .replace(/(!?\[[^\]]*\]\()\s*uploads\//g, `$1${uploadsBaseUrl}`)
-    .replace(/(!?\[[^\]]*\]\()\s*\/(?!\/)/g, `$1${gitlabBaseUrl}/`)
+    .replace(/(!?\[[^\]]*\]\()\s*([^)]+)\)/g, (_match, prefix, url) => `${prefix}${normalizeIssueAssetPath(url, gitlabBaseUrl)})`)
     .replace(/(<img\b[^>]*\bsrc=["'])\/uploads\//gi, `$1${uploadsBaseUrl}`)
     .replace(/(<img\b[^>]*\bsrc=["'])uploads\//gi, `$1${uploadsBaseUrl}`)
-    .replace(/(<img\b[^>]*\bsrc=["'])\/(?!\/)/gi, `$1${gitlabBaseUrl}/`);
+    .replace(/(<img\b[^>]*\bsrc=["'])([^"']+)/gi, (_match, prefix, url) => `${prefix}${normalizeIssueAssetPath(url, gitlabBaseUrl)}`);
 }
 
 function extractUnitFromIssue(issue) {
