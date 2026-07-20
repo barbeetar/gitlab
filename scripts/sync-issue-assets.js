@@ -112,8 +112,14 @@ function candidateUrls(originalUrl, issue) {
       candidates.push(value);
     }
   };
+  const addUploadApi = (value) => {
+    for (const apiUrl of uploadApiUrls(value, issue)) {
+      add(apiUrl);
+    }
+  };
 
   if (/^https?:\/\//i.test(raw)) {
+    addUploadApi(raw);
     add(raw);
     const uploadsIndex = raw.indexOf("/uploads/");
     if (uploadsIndex !== -1) {
@@ -123,12 +129,14 @@ function candidateUrls(originalUrl, issue) {
   }
 
   if (raw.startsWith("/uploads/")) {
+    addUploadApi(raw);
     add(`${base}${raw}`);
     add(`${gitlabBase}/-/project/${issue.project_id || projectId}${raw}`);
     return candidates;
   }
 
   if (raw.startsWith("uploads/")) {
+    addUploadApi(`/${raw}`);
     add(`${base}/${raw}`);
     add(`${gitlabBase}/-/project/${issue.project_id || projectId}/${raw}`);
     return candidates;
@@ -140,6 +148,32 @@ function candidateUrls(originalUrl, issue) {
     // Ignore unsupported relative URL.
   }
   return candidates;
+}
+
+function uploadApiUrls(url, issue) {
+  const match = String(url || "").match(/\/uploads\/([^/?#\/]+)\/([^?#]+)/);
+  if (!match) {
+    return [];
+  }
+
+  const uploadProjectId = issue.project_id || projectId;
+  const secret = safeDecodeURIComponent(match[1]);
+  const filename = safeDecodeURIComponent(match[2].split("/").pop() || "");
+  if (!uploadProjectId || !secret || !filename) {
+    return [];
+  }
+
+  return [
+    `${apiV4Url}/projects/${encodeURIComponent(uploadProjectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`
+  ];
+}
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch (_error) {
+    return value;
+  }
 }
 
 function extensionFromUrl(url) {
@@ -158,35 +192,79 @@ function assetPathFor(originalUrl, issue) {
   return `${assetDir}/issue-${issue.iid || issue.id || "issue"}-${hash}${extensionFromUrl(canonical)}`;
 }
 
+function isLikelyImage(filePath) {
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  const buffer = fs.readFileSync(filePath);
+  if (buffer.length < 8) {
+    return false;
+  }
+
+  const header = buffer.subarray(0, 512).toString("utf8").trimStart().toLowerCase();
+  if (header.startsWith("<!doctype html") || header.startsWith("<html") || header.includes("sign in")) {
+    return false;
+  }
+
+  return (
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) ||
+    buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])) ||
+    buffer.subarray(0, 6).toString("ascii") === "GIF87a" ||
+    buffer.subarray(0, 6).toString("ascii") === "GIF89a" ||
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" ||
+    buffer.subarray(0, 4).toString("ascii") === "<svg"
+  );
+}
+
 function downloadFirstAvailable(originalUrl, issue, targetPath) {
   for (const url of candidateUrls(originalUrl, issue)) {
+    const temporaryPath = `${targetPath}.tmp`;
     try {
       execFileSync("curl", [
         "-fL",
         "-sS",
         "--header", `PRIVATE-TOKEN: ${issuesToken}`,
-        "--output", targetPath,
+        "--output", temporaryPath,
         url
       ], { stdio: "inherit" });
-      return true;
+      if (isLikelyImage(temporaryPath)) {
+        fs.renameSync(temporaryPath, targetPath);
+        return true;
+      }
+      fs.rmSync(temporaryPath, { force: true });
+      console.error(`Downloaded response is not an image, skipped: ${url}`);
     } catch (_error) {
+      fs.rmSync(temporaryPath, { force: true });
       // Try the next possible GitLab upload URL shape.
     }
   }
   return false;
 }
 
-function commitAssets(assetPaths) {
-  if (!assetPaths.length) {
-    console.log("No new issue assets to commit.");
+function collectInvalidExistingAssets() {
+  if (!fs.existsSync(assetDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(assetDir)
+    .map((filename) => path.join(assetDir, filename))
+    .filter((filePath) => fs.statSync(filePath).isFile() && !isLikelyImage(filePath));
+}
+
+function commitAssetChanges(changes) {
+  if (!changes.length) {
+    console.log("No issue asset changes to commit.");
     return;
   }
 
-  const actions = assetPaths.map((assetPath) => ({
-    action: "create",
+  const actions = changes.map(({ action, assetPath }) => ({
+    action,
     file_path: assetPath.replace(/\\/g, "/"),
-    content: fs.readFileSync(assetPath).toString("base64"),
-    encoding: "base64"
+    ...(action === "delete" ? {} : {
+      content: fs.readFileSync(assetPath).toString("base64"),
+      encoding: "base64"
+    })
   }));
 
   const payloadPath = "/tmp/gitlab-issue-assets-commit.json";
@@ -213,25 +291,37 @@ function commitAssets(assetPaths) {
     throw new Error(`Failed to commit issue assets: HTTP ${status} ${responseText}`);
   }
 
-  console.log(`Committed ${assetPaths.length} issue asset file(s).`);
+  console.log(`Committed ${changes.length} issue asset change(s).`);
 }
 
 const issues = fetchIssues();
-const newAssets = [];
+const invalidExistingAssets = new Set(collectInvalidExistingAssets());
+const repairedInvalidAssets = new Set();
+const assetChanges = [];
 
 for (const issue of issues) {
   for (const originalUrl of collectImageUrls(issue.description || "")) {
     const assetPath = assetPathFor(originalUrl, issue);
-    if (fs.existsSync(assetPath)) {
+    if (fs.existsSync(assetPath) && isLikelyImage(assetPath)) {
       continue;
     }
+
+    const action = fs.existsSync(assetPath) ? "update" : "create";
     fs.mkdirSync(path.dirname(assetPath), { recursive: true });
     if (downloadFirstAvailable(originalUrl, issue, assetPath)) {
-      newAssets.push(assetPath);
+      assetChanges.push({ action, assetPath });
+      repairedInvalidAssets.add(assetPath);
     } else {
       console.error(`Failed to download issue image: ${originalUrl}`);
     }
   }
 }
 
-commitAssets(newAssets);
+for (const assetPath of invalidExistingAssets) {
+  if (!repairedInvalidAssets.has(assetPath)) {
+    fs.rmSync(assetPath, { force: true });
+    assetChanges.push({ action: "delete", assetPath });
+  }
+}
+
+commitAssetChanges(assetChanges);

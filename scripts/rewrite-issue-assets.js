@@ -51,8 +51,14 @@ function candidateUrls(originalUrl, issue) {
       candidates.push(value);
     }
   };
+  const addUploadApi = (value) => {
+    for (const apiUrl of uploadApiUrls(value, issue)) {
+      add(apiUrl);
+    }
+  };
 
   if (/^https?:\/\//i.test(raw)) {
+    addUploadApi(raw);
     add(raw);
     const uploadsIndex = raw.indexOf("/uploads/");
     if (uploadsIndex !== -1 && gitlabBase) {
@@ -62,6 +68,7 @@ function candidateUrls(originalUrl, issue) {
   }
 
   if (raw.startsWith("/uploads/")) {
+    addUploadApi(raw);
     add(`${base}${raw}`);
     if (gitlabBase) {
       add(`${gitlabBase}/-/project/${issue.project_id}${raw}`);
@@ -70,6 +77,7 @@ function candidateUrls(originalUrl, issue) {
   }
 
   if (raw.startsWith("uploads/")) {
+    addUploadApi(`/${raw}`);
     add(`${base}/${raw}`);
     if (gitlabBase) {
       add(`${gitlabBase}/-/project/${issue.project_id}/${raw}`);
@@ -83,6 +91,32 @@ function candidateUrls(originalUrl, issue) {
     // Ignore unsupported relative URL.
   }
   return candidates;
+}
+
+function uploadApiUrls(url, issue) {
+  const match = String(url || "").match(/\/uploads\/([^/?#\/]+)\/([^?#]+)/);
+  if (!match || !issue.project_id) {
+    return [];
+  }
+
+  const gitlabBase = gitlabBaseUrlFromIssue(issue);
+  const secret = safeDecodeURIComponent(match[1]);
+  const filename = safeDecodeURIComponent(match[2].split("/").pop() || "");
+  if (!gitlabBase || !secret || !filename) {
+    return [];
+  }
+
+  return [
+    `${gitlabBase}/api/v4/projects/${encodeURIComponent(issue.project_id)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`
+  ];
+}
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch (_error) {
+    return value;
+  }
 }
 
 function extensionFromUrl(url) {
