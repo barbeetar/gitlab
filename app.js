@@ -71,6 +71,7 @@ function normalizeIssue(issue) {
   const labels = Array.isArray(issue.labels) ? issue.labels : [];
   const description = String(issue.description || "");
   const createdAt = issue.created_at || issue.updated_at || "";
+  const documentDate = extractDocumentDate(description) || createdAt.slice(0, 10);
   return {
     id: issue.id,
     iid: issue.iid,
@@ -79,6 +80,7 @@ function normalizeIssue(issue) {
     labels,
     state: issue.state || "",
     author: issue.author?.name || issue.author?.username || "",
+    documentDate,
     createdAt,
     updatedAt: issue.updated_at || "",
     webUrl: issue.web_url || "",
@@ -86,6 +88,30 @@ function normalizeIssue(issue) {
     displayLabels: labels.filter((label) => !isUnitLabel(label)),
     summary: summarizeMarkdown(description)
   };
+}
+
+function extractDocumentDate(markdown) {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = lines[index].replace(/^#+\s*/, "").replace(/\*\*/g, "").trim();
+    const sameLineDate = normalized.match(/^日期\s*[:：]\s*(\d{4}-\d{2}-\d{2})/);
+    if (sameLineDate) {
+      return sameLineDate[1];
+    }
+    if (normalized === "日期") {
+      for (let next = index + 1; next < Math.min(lines.length, index + 5); next += 1) {
+        const date = lines[next].match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        if (date) {
+          return date[1];
+        }
+        if (lines[next].trim() && /^#{1,6}\s+/.test(lines[next])) {
+          break;
+        }
+      }
+    }
+  }
+  const fallback = String(markdown || "").match(/(?:日期|date)\s*[:：]\s*(\d{4}-\d{2}-\d{2})/i);
+  return fallback?.[1] || "";
 }
 
 function inferUnit(issueLabels) {
@@ -128,7 +154,7 @@ function applyFilters() {
       issue.author,
       issue.labels.join(" ")
     ].join(" ").toLowerCase();
-    const date = issue.createdAt.slice(0, 10);
+    const date = issue.documentDate || issue.createdAt.slice(0, 10);
 
     return (!keyword || text.includes(keyword))
       && (!label || issue.labels.some((item) => item.toLowerCase().includes(label)) || issue.unit.toLowerCase().includes(label))
@@ -145,7 +171,7 @@ function sortIssues() {
   const sortMode = sortSelect.value;
   filteredIssues.sort((a, b) => {
     if (sortMode === "date-asc") {
-      return compareText(a.createdAt, b.createdAt);
+      return compareText(a.documentDate || a.createdAt, b.documentDate || b.createdAt);
     }
     if (sortMode === "title-asc") {
       return compareText(a.title, b.title);
@@ -159,7 +185,7 @@ function sortIssues() {
     if (sortMode === "label-desc") {
       return compareText(b.unit || b.labels.join(" "), a.unit || a.labels.join(" "));
     }
-    return compareText(b.createdAt, a.createdAt);
+    return compareText(b.documentDate || b.createdAt, a.documentDate || a.createdAt);
   });
 }
 
@@ -221,7 +247,8 @@ function renderResults() {
     title.textContent = issue.title;
     meta.innerHTML = [
       issue.iid ? `#${issue.iid}` : "",
-      formatDateTime(issue.createdAt),
+      issue.documentDate ? `文件日期：${issue.documentDate}` : "",
+      issue.createdAt ? `建立：${formatDateTime(issue.createdAt)}` : "",
       issue.state || "",
       issue.unit ? `單位：${issue.unit}` : "",
       ...issue.displayLabels
