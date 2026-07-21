@@ -248,8 +248,19 @@ function collectInvalidExistingAssets() {
   }
 
   return fs.readdirSync(assetDir)
-    .map((filename) => path.join(assetDir, filename))
+    .map((filename) => `${assetDir}/${filename}`)
     .filter((filePath) => fs.statSync(filePath).isFile() && !isLikelyImage(filePath));
+}
+
+function collectExistingManagedAssets() {
+  if (!fs.existsSync(assetDir)) {
+    return [];
+  }
+
+  return fs.readdirSync(assetDir)
+    .filter((filename) => /^issue-.+\.[a-z0-9]+$/i.test(filename))
+    .map((filename) => `${assetDir}/${filename}`)
+    .filter((filePath) => fs.statSync(filePath).isFile());
 }
 
 function commitAssetChanges(changes) {
@@ -297,11 +308,13 @@ function commitAssetChanges(changes) {
 const issues = fetchIssues();
 const invalidExistingAssets = new Set(collectInvalidExistingAssets());
 const repairedInvalidAssets = new Set();
+const referencedAssets = new Set();
 const assetChanges = [];
 
 for (const issue of issues) {
   for (const originalUrl of collectImageUrls(issue.description || "")) {
     const assetPath = assetPathFor(originalUrl, issue);
+    referencedAssets.add(assetPath);
     if (fs.existsSync(assetPath) && isLikelyImage(assetPath)) {
       continue;
     }
@@ -317,8 +330,15 @@ for (const issue of issues) {
   }
 }
 
+for (const assetPath of collectExistingManagedAssets()) {
+  if (!referencedAssets.has(assetPath) && fs.existsSync(assetPath)) {
+    fs.rmSync(assetPath, { force: true });
+    assetChanges.push({ action: "delete", assetPath });
+  }
+}
+
 for (const assetPath of invalidExistingAssets) {
-  if (!repairedInvalidAssets.has(assetPath)) {
+  if (!repairedInvalidAssets.has(assetPath) && fs.existsSync(assetPath)) {
     fs.rmSync(assetPath, { force: true });
     assetChanges.push({ action: "delete", assetPath });
   }

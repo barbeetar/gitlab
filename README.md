@@ -8,7 +8,7 @@
 - Issue description 會用類似 GitLab / GitHub 的 Markdown 樣式顯示。
 - 支援分頁、排序、關鍵字查詢、標籤 / 單位查詢與日期區間。
 - Private GitLab Issues 可由 CI 用 `GITLAB_ISSUES_TOKEN` 讀取後發布成 Pages 靜態資料。
-- Issue 內貼上的 GitLab upload 圖片會由 CI 同步到 repo 的 `assets/issue-assets/`，避免 Pages 顯示 404。
+- Issue 內貼上的 GitLab upload 圖片會由 CI 同步到 repo 的 `assets/issue-assets/`，避免 Pages 顯示 404；Issue 已移除引用的舊圖片也會在下一次 pipeline 清理。
 
 ## 檔案結構
 
@@ -71,7 +71,7 @@ ISSUE_MAX_PAGES=10
 
 ```text
 GitLab Issues
--> sync_issue_assets job 下載 Issue 圖片並 commit 到 assets/issue-assets/
+-> sync_issue_assets job 下載 Issue 圖片、清理未引用圖片，並 commit 到 assets/issue-assets/
 -> pages job 執行 scripts/build-issues-index.sh
 -> 產生 public/data/issues.json
 -> scripts/rewrite-issue-assets.js 改寫圖片路徑

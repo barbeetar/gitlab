@@ -74,7 +74,7 @@ ISSUE_MAX_PAGES=10
 sync_issue_assets
 ```
 
-讀取 GitLab Issues，找出 description 內的圖片，下載後 commit 到 `assets/issue-assets/`。如果下載到 GitLab sign-in HTML，腳本會判斷不是圖片並跳過或修正錯檔。
+讀取 GitLab Issues，找出 description 內的圖片，下載後 commit 到 `assets/issue-assets/`。如果 Issue 已刪除某張圖片引用，下一次 pipeline 會刪除 `assets/issue-assets/` 內不再被目前 Issues 使用的舊圖片。如果下載到 GitLab sign-in HTML，腳本會判斷不是圖片並跳過或修正錯檔。
 
 ```text
 pages
