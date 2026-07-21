@@ -93,7 +93,7 @@ body {
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 24px;
   align-items: start;
 }
@@ -108,7 +108,7 @@ body {
 }
 
 .panel-preview {
-  grid-column: auto;
+  grid-column: 1 / -1;
 }
 
 .panel-heading {

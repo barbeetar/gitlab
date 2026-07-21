@@ -3,32 +3,8 @@
 # then rename/copy this file to .gitlab-ci.yml.
 
 stages:
-  - write
-  - index
   - assets
   - deploy
-
-commit_entry:
-  stage: write
-  tags:
-    - your-company-runner-tag
-  before_script:
-    - apk add --no-cache curl
-  script:
-    - sh scripts/commit-entry-from-ci.sh
-  rules:
-    - if: $TRIGGER_ACTION == "create_entry"
-
-update_search_index:
-  stage: index
-  tags:
-    - your-company-runner-tag
-  before_script:
-    - apk add --no-cache curl
-  script:
-    - sh scripts/update-search-index-from-ci.sh
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
 
 sync_issue_assets:
   stage: assets
@@ -43,7 +19,7 @@ sync_issue_assets:
       - assets/issue-assets/
     expire_in: 1 day
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 pages:
   stage: deploy
@@ -55,10 +31,8 @@ pages:
   before_script:
     - apk add --no-cache curl nodejs
   script:
-    - sh scripts/build-search-index.sh
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
-    - cp -r entries public/
     - if [ -d assets ]; then cp -r assets public/; fi
     - sh scripts/build-issues-index.sh
   pages: true
@@ -66,4 +40,4 @@ pages:
     paths:
       - public
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $TRIGGER_ACTION != "create_entry"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
