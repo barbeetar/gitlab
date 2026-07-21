@@ -352,7 +352,7 @@ function renderTable(lines) {
 
 function renderInlineMarkdown(value) {
   let text = escapeHtml(value);
-  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, src) => {
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)(?:\s*\{[^}]*\b(?:width|height)\b[^}]*\})?/gi, (_match, alt, src) => {
     const safeSrc = normalizeAssetPath(src);
     return `<img src="${escapeHtml(safeSrc)}" alt="${escapeHtml(alt)}" loading="lazy">`;
   });
