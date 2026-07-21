@@ -83,17 +83,22 @@ function normalizeIssue(issue) {
     updatedAt: issue.updated_at || "",
     webUrl: issue.web_url || "",
     unit: inferUnit(labels),
+    displayLabels: labels.filter((label) => !isUnitLabel(label)),
     summary: summarizeMarkdown(description)
   };
 }
 
 function inferUnit(issueLabels) {
   const labels = Array.isArray(issueLabels) ? issueLabels : [];
-  const unitLabel = labels.find((label) => /^(unit|單位|部門|department)::/i.test(label));
+  const unitLabel = labels.find(isUnitLabel);
   if (unitLabel) {
     return unitLabel.split("::").slice(1).join("::").trim();
   }
-  return labels[0] || "";
+  return "";
+}
+
+function isUnitLabel(label) {
+  return /^(unit|單位|部門|department)::/i.test(String(label || ""));
 }
 
 function summarizeMarkdown(markdown) {
@@ -162,6 +167,27 @@ function compareText(a, b) {
   return String(a || "").localeCompare(String(b || ""), "zh-Hant", { numeric: true, sensitivity: "base" });
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "未填日期";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  const parts = new Intl.DateTimeFormat("zh-TW", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value || "00";
+  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
 function renderResults() {
   resultsContainer.innerHTML = "";
   const pageSize = Number(pageSizeSelect.value || "10");
@@ -195,10 +221,10 @@ function renderResults() {
     title.textContent = issue.title;
     meta.innerHTML = [
       issue.iid ? `#${issue.iid}` : "",
-      issue.createdAt ? issue.createdAt.slice(0, 10) : "未填日期",
+      formatDateTime(issue.createdAt),
       issue.state || "",
-      issue.unit || "",
-      ...issue.labels
+      issue.unit ? `單位：${issue.unit}` : "",
+      ...issue.displayLabels
     ].filter(Boolean).map((item) => `<span class="meta-pill">${escapeHtml(item)}</span>`).join("");
     summary.textContent = issue.summary || "此 Issue 沒有描述內容。";
     detail.innerHTML = renderMarkdown(issue.description || "此 Issue 沒有描述內容。");
@@ -328,7 +354,7 @@ function renderInlineMarkdown(value) {
   let text = escapeHtml(value);
   text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, src) => {
     const safeSrc = normalizeAssetPath(src);
-    return `<figure class="markdown-image"><img src="${escapeHtml(safeSrc)}" alt="${escapeHtml(alt)}" loading="lazy" onerror="this.closest('figure').classList.add('image-load-failed')"><figcaption><a href="${escapeHtml(safeSrc)}" target="_blank" rel="noreferrer">開啟圖片</a><span>圖片無法載入</span></figcaption></figure>`;
+    return `<img src="${escapeHtml(safeSrc)}" alt="${escapeHtml(alt)}" loading="lazy">`;
   });
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, href) => `<a href="${escapeHtml(normalizeAssetPath(href))}" target="_blank" rel="noreferrer">${label}</a>`);
   text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
