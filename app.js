@@ -254,11 +254,11 @@ function renderResults() {
       ...issue.displayLabels
     ].filter(Boolean).map((item) => `<span class="meta-pill">${escapeHtml(item)}</span>`).join("");
     summary.textContent = issue.summary || "此 Issue 沒有描述內容。";
-    detail.innerHTML = renderIssueFacts(issue);
+    detail.innerHTML = renderMarkdown(issue.description || "此 Issue 沒有描述內容。");
 
     toggle.addEventListener("click", () => {
       detail.classList.toggle("hidden");
-      toggle.textContent = detail.classList.contains("hidden") ? "展開重點" : "收合重點";
+      toggle.textContent = detail.classList.contains("hidden") ? "展開文件" : "收合文件";
     });
     openPreview.addEventListener("click", () => showPreview(issue));
 
@@ -272,23 +272,6 @@ function renderResults() {
     article.addEventListener("dblclick", () => showPreview(issue));
     resultsContainer.appendChild(node);
   }
-}
-
-function renderIssueFacts(issue) {
-  const facts = [
-    ["Issue", issue.iid ? `#${issue.iid}` : ""],
-    ["文件日期", issue.documentDate],
-    ["GitLab 建立時間", issue.createdAt ? formatDateTime(issue.createdAt) : ""],
-    ["狀態", issue.state],
-    ["單位", issue.unit],
-    ["標籤", issue.displayLabels.join("、")],
-    ["建立者", issue.author],
-    ["摘要", issue.summary || "此 Issue 沒有描述內容。"]
-  ].filter(([, value]) => value);
-
-  return facts.map(([label, value]) => (
-    `<div class="detail-block"><strong>${escapeHtml(label)}</strong><p>${escapeHtml(value)}</p></div>`
-  )).join("");
 }
 
 function showPreview(issue) {
