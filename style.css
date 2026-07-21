@@ -484,6 +484,9 @@ button:disabled {
   line-height: 1.75;
   white-space: normal;
   font: inherit;
+  max-height: min(720px, 70vh);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .hidden {
