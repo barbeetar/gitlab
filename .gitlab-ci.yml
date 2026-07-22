@@ -2,10 +2,38 @@ stages:
   - assets
   - deploy
 
+.runtime_before_script: &runtime_before_script
+  - |
+    install_runtime() {
+      if command -v curl >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+        echo "curl and nodejs already available."
+        return 0
+      fi
+
+      for attempt in 1 2 3; do
+        echo "Installing curl nodejs from default Alpine repositories, attempt ${attempt}/3..."
+        apk add --no-cache curl nodejs && return 0
+        sleep 5
+      done
+
+      alpine_version="$(cut -d. -f1,2 /etc/alpine-release)"
+      echo "Default Alpine CDN failed. Switching to dl-2.alpinelinux.org for Alpine v${alpine_version}."
+      printf "https://dl-2.alpinelinux.org/alpine/v%s/main\nhttps://dl-2.alpinelinux.org/alpine/v%s/community\n" "$alpine_version" "$alpine_version" > /etc/apk/repositories
+
+      for attempt in 1 2 3; do
+        echo "Installing curl nodejs from fallback Alpine mirror, attempt ${attempt}/3..."
+        apk update && apk add --no-cache curl nodejs && return 0
+        sleep 5
+      done
+
+      echo "Failed to install curl nodejs after retrying default CDN and fallback mirror." >&2
+      return 1
+    }
+    install_runtime
+
 sync_issue_assets:
   stage: assets
-  before_script:
-    - apk add --no-cache curl nodejs
+  before_script: *runtime_before_script
   script:
     - node scripts/sync-issue-assets.js
   artifacts:
@@ -20,8 +48,7 @@ pages:
   needs:
     - job: sync_issue_assets
       artifacts: true
-  before_script:
-    - apk add --no-cache curl nodejs
+  before_script: *runtime_before_script
   script:
     - mkdir -p public
     - cp index.html style.css app.js README.md GITLAB_DEPLOY.md public/
