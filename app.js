@@ -179,12 +179,6 @@ function sortIssues() {
     if (sortMode === "title-desc") {
       return compareText(b.title, a.title);
     }
-    if (sortMode === "label-asc") {
-      return compareText(a.unit || a.labels.join(" "), b.unit || b.labels.join(" "));
-    }
-    if (sortMode === "label-desc") {
-      return compareText(b.unit || b.labels.join(" "), a.unit || a.labels.join(" "));
-    }
     return compareText(b.documentDate || b.createdAt, a.documentDate || a.createdAt);
   });
 }
