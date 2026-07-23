@@ -310,12 +310,26 @@ const invalidExistingAssets = new Set(collectInvalidExistingAssets());
 const repairedInvalidAssets = new Set();
 const referencedAssets = new Set();
 const assetChanges = [];
+const stats = {
+  issues: issues.length,
+  imageReferences: 0,
+  existingImages: 0,
+  downloadedImages: 0,
+  failedDownloads: 0,
+  invalidExistingImages: invalidExistingAssets.size,
+  deletedUnusedImages: 0,
+  deletedInvalidImages: 0
+};
+
+console.log(`Fetched ${stats.issues} issue(s) for asset sync.`);
 
 for (const issue of issues) {
   for (const originalUrl of collectImageUrls(issue.description || "")) {
+    stats.imageReferences += 1;
     const assetPath = assetPathFor(originalUrl, issue);
     referencedAssets.add(assetPath);
     if (fs.existsSync(assetPath) && isLikelyImage(assetPath)) {
+      stats.existingImages += 1;
       continue;
     }
 
@@ -324,7 +338,10 @@ for (const issue of issues) {
     if (downloadFirstAvailable(originalUrl, issue, assetPath)) {
       assetChanges.push({ action, assetPath });
       repairedInvalidAssets.add(assetPath);
+      stats.downloadedImages += 1;
+      console.log(`Synced issue image: ${assetPath}`);
     } else {
+      stats.failedDownloads += 1;
       console.error(`Failed to download issue image: ${originalUrl}`);
     }
   }
@@ -334,6 +351,8 @@ for (const assetPath of collectExistingManagedAssets()) {
   if (!referencedAssets.has(assetPath) && fs.existsSync(assetPath)) {
     fs.rmSync(assetPath, { force: true });
     assetChanges.push({ action: "delete", assetPath });
+    stats.deletedUnusedImages += 1;
+    console.log(`Deleted unused issue image: ${assetPath}`);
   }
 }
 
@@ -341,7 +360,20 @@ for (const assetPath of invalidExistingAssets) {
   if (!repairedInvalidAssets.has(assetPath) && fs.existsSync(assetPath)) {
     fs.rmSync(assetPath, { force: true });
     assetChanges.push({ action: "delete", assetPath });
+    stats.deletedInvalidImages += 1;
+    console.log(`Deleted invalid issue image: ${assetPath}`);
   }
 }
+
+console.log("Issue asset sync summary:");
+console.log(`- Issues scanned: ${stats.issues}`);
+console.log(`- Image references found: ${stats.imageReferences}`);
+console.log(`- Existing valid images reused: ${stats.existingImages}`);
+console.log(`- Images downloaded or repaired: ${stats.downloadedImages}`);
+console.log(`- Image download failures: ${stats.failedDownloads}`);
+console.log(`- Invalid existing images detected: ${stats.invalidExistingImages}`);
+console.log(`- Unused images deleted: ${stats.deletedUnusedImages}`);
+console.log(`- Invalid images deleted: ${stats.deletedInvalidImages}`);
+console.log(`- GitLab commit actions: ${assetChanges.length}`);
 
 commitAssetChanges(assetChanges);
